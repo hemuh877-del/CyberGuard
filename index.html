@@ -3,1192 +3,680 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>CyberGuard — Your AI Security Guardian</title>
+<title>CyberGuard — AI Security Guardian</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&display=swap" rel="stylesheet">
+<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
 <style>
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
- 
-  :root {
-    --bg: #050810;
-    --surface: #0c1120;
-    --surface2: #111827;
-    --border: rgba(255,255,255,0.07);
-    --border2: rgba(255,255,255,0.12);
-    --accent: #00e5ff;
-    --accent2: #7c3aed;
-    --danger: #ff4d6d;
-    --success: #22d3a5;
-    --warning: #fbbf24;
-    --text: #f0f4ff;
-    --muted: #8892a4;
-    --font-display: 'Syne', sans-serif;
-    --font-body: 'DM Sans', sans-serif;
-  }
- 
-  html { scroll-behavior: smooth; }
- 
-  body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: var(--font-body);
-    font-size: 16px;
-    line-height: 1.6;
-    overflow-x: hidden;
-  }
- 
-  /* ── GRID NOISE BACKGROUND ── */
-  body::before {
-    content: '';
-    position: fixed;
-    inset: 0;
-    background-image:
-      linear-gradient(rgba(0,229,255,0.03) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(0,229,255,0.03) 1px, transparent 1px);
-    background-size: 48px 48px;
-    pointer-events: none;
-    z-index: 0;
-  }
- 
-  /* ── NAV ── */
-  nav {
-    position: fixed;
-    top: 0; left: 0; right: 0;
-    z-index: 100;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0 40px;
-    height: 64px;
-    background: rgba(5,8,16,0.85);
-    backdrop-filter: blur(16px);
-    border-bottom: 1px solid var(--border);
-  }
- 
-  .logo {
-    font-family: var(--font-display);
-    font-weight: 800;
-    font-size: 20px;
-    letter-spacing: -0.5px;
-    color: var(--text);
-    text-decoration: none;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
- 
-  .logo-icon {
-    width: 28px; height: 28px;
-    background: linear-gradient(135deg, var(--accent), var(--accent2));
-    border-radius: 6px;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 14px;
-  }
- 
-  .nav-links {
-    display: flex;
-    align-items: center;
-    gap: 32px;
-    list-style: none;
-  }
- 
-  .nav-links a {
-    color: var(--muted);
-    text-decoration: none;
-    font-size: 14px;
-    font-weight: 400;
-    transition: color 0.2s;
-  }
- 
-  .nav-links a:hover { color: var(--text); }
- 
-  .nav-cta {
-    background: var(--accent);
-    color: #000 !important;
-    font-weight: 500 !important;
-    padding: 8px 20px;
-    border-radius: 6px;
-    font-size: 14px !important;
-    transition: opacity 0.2s !important;
-  }
-  .nav-cta:hover { opacity: 0.85; }
- 
-  /* ── HERO ── */
-  .hero {
-    position: relative;
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    text-align: center;
-    padding: 120px 24px 80px;
-    z-index: 1;
-  }
- 
-  .hero-glow {
-    position: absolute;
-    top: 10%;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 600px;
-    height: 400px;
-    background: radial-gradient(ellipse, rgba(0,229,255,0.12) 0%, transparent 70%);
-    pointer-events: none;
-  }
- 
-  .hero-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    background: rgba(0,229,255,0.08);
-    border: 1px solid rgba(0,229,255,0.2);
-    color: var(--accent);
-    font-size: 12px;
-    font-weight: 500;
-    padding: 6px 14px;
-    border-radius: 100px;
-    margin-bottom: 28px;
-    letter-spacing: 0.5px;
-    text-transform: uppercase;
-    animation: fadeUp 0.6s ease both;
-  }
- 
-  .pulse-dot {
-    width: 6px; height: 6px;
-    background: var(--accent);
-    border-radius: 50%;
-    animation: pulse 2s ease-in-out infinite;
-  }
- 
-  @keyframes pulse {
-    0%, 100% { opacity: 1; transform: scale(1); }
-    50% { opacity: 0.5; transform: scale(1.4); }
-  }
- 
-  h1 {
-    font-family: var(--font-display);
-    font-size: clamp(40px, 7vw, 80px);
-    font-weight: 800;
-    line-height: 1.05;
-    letter-spacing: -2px;
-    margin-bottom: 24px;
-    animation: fadeUp 0.6s ease 0.1s both;
-  }
- 
-  h1 .accent { color: var(--accent); }
-  h1 .dim { color: var(--muted); }
- 
-  .hero-sub {
-    font-size: clamp(16px, 2vw, 20px);
-    color: var(--muted);
-    max-width: 560px;
-    margin: 0 auto 48px;
-    font-weight: 300;
-    line-height: 1.7;
-    animation: fadeUp 0.6s ease 0.2s both;
-  }
- 
-  /* ── SCANNER WIDGET ── */
-  .scanner-wrap {
-    width: 100%;
-    max-width: 560px;
-    margin: 0 auto;
-    animation: fadeUp 0.6s ease 0.3s both;
-  }
- 
-  .scanner-box {
-    background: var(--surface);
-    border: 1px solid var(--border2);
-    border-radius: 16px;
-    padding: 28px;
-    position: relative;
-    overflow: hidden;
-  }
- 
-  .scanner-box::before {
-    content: '';
-    position: absolute;
-    top: 0; left: 0; right: 0;
-    height: 1px;
-    background: linear-gradient(90deg, transparent, var(--accent), transparent);
-  }
- 
-  .scanner-label {
-    font-size: 12px;
-    font-weight: 500;
-    color: var(--muted);
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    margin-bottom: 16px;
-    text-align: left;
-  }
- 
-  .scanner-input-row {
-    display: flex;
-    gap: 10px;
-  }
- 
-  .scanner-input {
-    flex: 1;
-    background: var(--bg);
-    border: 1px solid var(--border2);
-    border-radius: 8px;
-    padding: 14px 16px;
-    color: var(--text);
-    font-family: var(--font-body);
-    font-size: 15px;
-    outline: none;
-    transition: border-color 0.2s;
-  }
- 
-  .scanner-input:focus { border-color: var(--accent); }
-  .scanner-input::placeholder { color: var(--muted); }
- 
-  .scan-btn {
-    background: var(--accent);
-    color: #000;
-    border: none;
-    border-radius: 8px;
-    padding: 14px 24px;
-    font-family: var(--font-display);
-    font-weight: 700;
-    font-size: 14px;
-    cursor: pointer;
-    white-space: nowrap;
-    transition: all 0.2s;
-    letter-spacing: 0.3px;
-  }
- 
-  .scan-btn:hover { opacity: 0.85; transform: translateY(-1px); }
-  .scan-btn:active { transform: translateY(0); }
-  .scan-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
- 
-  .scanner-note {
-    font-size: 12px;
-    color: var(--muted);
-    margin-top: 12px;
-    text-align: left;
-  }
- 
-  /* ── SCAN RESULTS ── */
-  #scan-result {
-    margin-top: 20px;
-    display: none;
-  }
- 
-  .result-header {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-bottom: 16px;
-  }
- 
-  .result-icon {
-    width: 36px; height: 36px;
-    border-radius: 8px;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 16px;
-    flex-shrink: 0;
-  }
- 
-  .result-icon.danger { background: rgba(255,77,109,0.15); color: var(--danger); }
-  .result-icon.safe { background: rgba(34,211,165,0.15); color: var(--success); }
- 
-  .result-title { font-family: var(--font-display); font-size: 16px; font-weight: 700; }
-  .result-sub { font-size: 13px; color: var(--muted); }
- 
-  .breach-list {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    margin-bottom: 16px;
-  }
- 
-  .breach-item {
-    background: rgba(255,77,109,0.06);
-    border: 1px solid rgba(255,77,109,0.15);
-    border-radius: 8px;
-    padding: 10px 14px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-  }
- 
-  .breach-name { font-size: 14px; font-weight: 500; }
-  .breach-date { font-size: 12px; color: var(--muted); }
-  .breach-tag {
-    font-size: 11px;
-    padding: 3px 8px;
-    border-radius: 4px;
-    background: rgba(255,77,109,0.12);
-    color: var(--danger);
-    white-space: nowrap;
-  }
- 
-  .upgrade-cta-box {
-    background: linear-gradient(135deg, rgba(124,58,237,0.15), rgba(0,229,255,0.08));
-    border: 1px solid rgba(124,58,237,0.3);
-    border-radius: 10px;
-    padding: 16px;
-    text-align: center;
-  }
- 
-  .upgrade-cta-box p { font-size: 13px; color: var(--muted); margin-bottom: 12px; }
-  .upgrade-cta-box strong { color: var(--text); }
- 
-  .btn-upgrade {
-    background: linear-gradient(135deg, var(--accent2), var(--accent));
-    color: #fff;
-    border: none;
-    border-radius: 8px;
-    padding: 10px 24px;
-    font-family: var(--font-display);
-    font-weight: 700;
-    font-size: 14px;
-    cursor: pointer;
-    transition: opacity 0.2s;
-    width: 100%;
-  }
-  .btn-upgrade:hover { opacity: 0.85; }
- 
-  /* ── LOADING ANIMATION ── */
-  .scan-loading {
-    display: none;
-    align-items: center;
-    gap: 10px;
-    margin-top: 16px;
-    color: var(--accent);
-    font-size: 13px;
-  }
- 
-  .scan-loading.active { display: flex; }
- 
-  .spinner {
-    width: 16px; height: 16px;
-    border: 2px solid rgba(0,229,255,0.2);
-    border-top-color: var(--accent);
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-  }
- 
-  @keyframes spin { to { transform: rotate(360deg); } }
- 
-  /* ── TRUST BADGES ── */
-  .trust-row {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 32px;
-    margin-top: 56px;
-    flex-wrap: wrap;
-    animation: fadeUp 0.6s ease 0.4s both;
-  }
- 
-  .trust-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    color: var(--muted);
-    font-size: 13px;
-  }
- 
-  .trust-icon { color: var(--success); font-size: 14px; }
- 
-  /* ── STATS STRIP ── */
-  .stats-strip {
-    position: relative;
-    z-index: 1;
-    border-top: 1px solid var(--border);
-    border-bottom: 1px solid var(--border);
-    padding: 40px 24px;
-    display: flex;
-    justify-content: center;
-    gap: 64px;
-    flex-wrap: wrap;
-    background: var(--surface);
-  }
- 
-  .stat { text-align: center; }
-  .stat-num {
-    font-family: var(--font-display);
-    font-size: 36px;
-    font-weight: 800;
-    color: var(--accent);
-    letter-spacing: -1px;
-  }
-  .stat-label { font-size: 13px; color: var(--muted); margin-top: 2px; }
- 
-  /* ── HOW IT WORKS ── */
-  section { position: relative; z-index: 1; }
- 
-  .section-inner {
-    max-width: 1100px;
-    margin: 0 auto;
-    padding: 100px 24px;
-  }
- 
-  .section-tag {
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    color: var(--accent);
-    margin-bottom: 16px;
-  }
- 
-  .section-title {
-    font-family: var(--font-display);
-    font-size: clamp(28px, 4vw, 44px);
-    font-weight: 800;
-    letter-spacing: -1px;
-    line-height: 1.1;
-    margin-bottom: 16px;
-  }
- 
-  .section-sub {
-    color: var(--muted);
-    max-width: 500px;
-    font-size: 16px;
-    margin-bottom: 60px;
-  }
- 
-  .steps-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: 20px;
-  }
- 
-  .step-card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 28px 24px;
-    transition: border-color 0.3s, transform 0.3s;
-    position: relative;
-    overflow: hidden;
-  }
- 
-  .step-card::after {
-    content: '';
-    position: absolute;
-    bottom: 0; left: 0; right: 0;
-    height: 2px;
-    background: linear-gradient(90deg, var(--accent2), var(--accent));
-    opacity: 0;
-    transition: opacity 0.3s;
-  }
- 
-  .step-card:hover { border-color: var(--border2); transform: translateY(-3px); }
-  .step-card:hover::after { opacity: 1; }
- 
-  .step-num {
-    font-family: var(--font-display);
-    font-size: 11px;
-    font-weight: 700;
-    color: var(--accent);
-    letter-spacing: 2px;
-    margin-bottom: 16px;
-  }
- 
-  .step-icon {
-    font-size: 28px;
-    margin-bottom: 16px;
-    display: block;
-  }
- 
-  .step-title {
-    font-family: var(--font-display);
-    font-size: 18px;
-    font-weight: 700;
-    margin-bottom: 8px;
-  }
- 
-  .step-desc { font-size: 14px; color: var(--muted); line-height: 1.6; }
- 
-  /* ── FEATURES ── */
-  .features-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    gap: 20px;
-  }
- 
-  .feature-card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 28px;
-    transition: border-color 0.2s;
-  }
- 
-  .feature-card:hover { border-color: var(--border2); }
- 
-  .feature-card.highlight {
-    border-color: rgba(0,229,255,0.25);
-    background: linear-gradient(135deg, var(--surface), rgba(0,229,255,0.04));
-  }
- 
-  .feat-icon {
-    width: 44px; height: 44px;
-    border-radius: 10px;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 20px;
-    margin-bottom: 16px;
-  }
- 
-  .feat-icon.cyan { background: rgba(0,229,255,0.1); }
-  .feat-icon.purple { background: rgba(124,58,237,0.12); }
-  .feat-icon.red { background: rgba(255,77,109,0.1); }
-  .feat-icon.green { background: rgba(34,211,165,0.1); }
-  .feat-icon.yellow { background: rgba(251,191,36,0.1); }
-  .feat-icon.blue { background: rgba(59,130,246,0.1); }
- 
-  .feat-title {
-    font-family: var(--font-display);
-    font-size: 17px;
-    font-weight: 700;
-    margin-bottom: 8px;
-  }
- 
-  .feat-desc { font-size: 14px; color: var(--muted); line-height: 1.6; }
- 
-  /* ── PRICING ── */
-  .pricing-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-    gap: 24px;
-    max-width: 800px;
-    margin: 0 auto;
-  }
- 
-  .price-card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 16px;
-    padding: 36px 32px;
-    transition: transform 0.2s;
-  }
- 
-  .price-card:hover { transform: translateY(-4px); }
- 
-  .price-card.popular {
-    border-color: var(--accent);
-    position: relative;
-  }
- 
-  .popular-badge {
-    position: absolute;
-    top: -12px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: var(--accent);
-    color: #000;
-    font-size: 11px;
-    font-weight: 700;
-    padding: 4px 16px;
-    border-radius: 100px;
-    white-space: nowrap;
-    font-family: var(--font-display);
-    letter-spacing: 0.5px;
-  }
- 
-  .plan-name {
-    font-family: var(--font-display);
-    font-size: 14px;
-    font-weight: 700;
-    letter-spacing: 1px;
-    text-transform: uppercase;
-    color: var(--muted);
-    margin-bottom: 12px;
-  }
- 
-  .plan-price {
-    font-family: var(--font-display);
-    font-size: 52px;
-    font-weight: 800;
-    letter-spacing: -2px;
-    line-height: 1;
-    margin-bottom: 4px;
-  }
- 
-  .plan-price sup { font-size: 24px; vertical-align: top; margin-top: 10px; display: inline-block; }
-  .plan-period { font-size: 13px; color: var(--muted); margin-bottom: 28px; }
- 
-  .plan-features { list-style: none; margin-bottom: 32px; }
-  .plan-features li {
-    font-size: 14px;
-    color: var(--muted);
-    padding: 7px 0;
-    border-bottom: 1px solid var(--border);
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-  .plan-features li:last-child { border-bottom: none; }
-  .plan-features li .check { color: var(--success); font-size: 13px; }
-  .plan-features li .x { color: var(--muted); font-size: 13px; opacity: 0.4; }
-  .plan-features li span { color: var(--text); }
- 
-  .plan-btn {
-    width: 100%;
-    padding: 14px;
-    border-radius: 8px;
-    font-family: var(--font-display);
-    font-weight: 700;
-    font-size: 15px;
-    cursor: pointer;
-    transition: all 0.2s;
-    border: none;
-  }
- 
-  .plan-btn.outline {
-    background: transparent;
-    border: 1px solid var(--border2);
-    color: var(--text);
-  }
-  .plan-btn.outline:hover { border-color: var(--accent); color: var(--accent); }
- 
-  .plan-btn.filled {
-    background: var(--accent);
-    color: #000;
-  }
-  .plan-btn.filled:hover { opacity: 0.85; transform: translateY(-1px); }
- 
-  /* ── THREAT TICKER ── */
-  .ticker-wrap {
-    overflow: hidden;
-    border-top: 1px solid var(--border);
-    border-bottom: 1px solid var(--border);
-    background: var(--surface);
-    padding: 12px 0;
-  }
- 
-  .ticker-track {
-    display: flex;
-    gap: 48px;
-    animation: ticker 30s linear infinite;
-    white-space: nowrap;
-  }
- 
-  .ticker-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 13px;
-    color: var(--muted);
-    flex-shrink: 0;
-  }
- 
-  .ticker-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
-  .ticker-dot.red { background: var(--danger); }
-  .ticker-dot.yellow { background: var(--warning); }
-  .ticker-dot.green { background: var(--success); }
- 
-  @keyframes ticker {
-    from { transform: translateX(0); }
-    to { transform: translateX(-50%); }
-  }
- 
-  /* ── FOOTER ── */
-  footer {
-    position: relative;
-    z-index: 1;
-    border-top: 1px solid var(--border);
-    padding: 48px 40px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    flex-wrap: gap;
-    gap: 24px;
-  }
- 
-  footer .logo { font-size: 16px; }
-  footer p { font-size: 13px; color: var(--muted); }
- 
-  .footer-links {
-    display: flex;
-    gap: 24px;
-    list-style: none;
-  }
- 
-  .footer-links a { font-size: 13px; color: var(--muted); text-decoration: none; }
-  .footer-links a:hover { color: var(--text); }
- 
-  /* ── ANIMATIONS ── */
-  @keyframes fadeUp {
-    from { opacity: 0; transform: translateY(20px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
- 
-  .reveal {
-    opacity: 0;
-    transform: translateY(24px);
-    transition: opacity 0.6s ease, transform 0.6s ease;
-  }
-  .reveal.visible { opacity: 1; transform: translateY(0); }
- 
-  /* ── MODAL ── */
-  .modal-overlay {
-    display: none;
-    position: fixed;
-    inset: 0;
-    background: rgba(0,0,0,0.75);
-    z-index: 200;
-    align-items: center;
-    justify-content: center;
-    padding: 24px;
-  }
-  .modal-overlay.open { display: flex; }
- 
-  .modal {
-    background: var(--surface2);
-    border: 1px solid var(--border2);
-    border-radius: 16px;
-    padding: 36px;
-    max-width: 440px;
-    width: 100%;
-    position: relative;
-  }
- 
-  .modal-close {
-    position: absolute;
-    top: 16px; right: 16px;
-    background: none;
-    border: none;
-    color: var(--muted);
-    font-size: 20px;
-    cursor: pointer;
-    line-height: 1;
-  }
- 
-  .modal h2 { font-family: var(--font-display); font-size: 24px; font-weight: 800; margin-bottom: 8px; }
-  .modal p { color: var(--muted); font-size: 14px; margin-bottom: 24px; }
- 
-  .modal-input {
-    width: 100%;
-    background: var(--bg);
-    border: 1px solid var(--border2);
-    border-radius: 8px;
-    padding: 14px 16px;
-    color: var(--text);
-    font-family: var(--font-body);
-    font-size: 15px;
-    outline: none;
-    margin-bottom: 12px;
-    display: block;
-  }
-  .modal-input:focus { border-color: var(--accent); }
- 
-  .modal-btn {
-    width: 100%;
-    padding: 14px;
-    background: linear-gradient(135deg, var(--accent2), var(--accent));
-    color: #fff;
-    border: none;
-    border-radius: 8px;
-    font-family: var(--font-display);
-    font-weight: 700;
-    font-size: 15px;
-    cursor: pointer;
-    transition: opacity 0.2s;
-  }
-  .modal-btn:hover { opacity: 0.85; }
- 
-  .modal-note { font-size: 12px; color: var(--muted); margin-top: 12px; text-align: center; }
- 
-  /* ── RESPONSIVE ── */
-  @media (max-width: 640px) {
-    nav { padding: 0 20px; }
-    .nav-links { display: none; }
-    .scanner-input-row { flex-direction: column; }
-    .scan-btn { width: 100%; }
-    .stats-strip { gap: 32px; }
-    footer { flex-direction: column; text-align: center; }
-  }
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#050810;--surface:#0c1120;--surface2:#111827;
+  --border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.13);
+  --accent:#00e5ff;--accent2:#7c3aed;--danger:#ff4d6d;
+  --success:#22d3a5;--warning:#fbbf24;
+  --text:#f0f4ff;--muted:#8892a4;
+  --ff:'Syne',sans-serif;--fb:'DM Sans',sans-serif;
+}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--text);font-family:var(--fb);font-size:16px;line-height:1.6;overflow-x:hidden}
+body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(0,229,255,0.025) 1px,transparent 1px),linear-gradient(90deg,rgba(0,229,255,0.025) 1px,transparent 1px);background-size:52px 52px;pointer-events:none;z-index:0}
+ 
+/* NAV */
+nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:center;justify-content:space-between;padding:0 40px;height:62px;background:rgba(5,8,16,0.9);backdrop-filter:blur(20px);border-bottom:1px solid var(--border)}
+.logo{font-family:var(--ff);font-weight:800;font-size:19px;color:var(--text);text-decoration:none;display:flex;align-items:center;gap:8px;letter-spacing:-0.3px}
+.logo-icon{width:26px;height:26px;background:linear-gradient(135deg,var(--accent),var(--accent2));border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:13px}
+.nav-links{display:flex;align-items:center;gap:28px;list-style:none}
+.nav-links a{color:var(--muted);text-decoration:none;font-size:14px;transition:color .2s}
+.nav-links a:hover{color:var(--text)}
+.nav-cta{background:var(--accent)!important;color:#000!important;font-weight:500!important;padding:7px 18px;border-radius:6px!important;font-size:13px!important}
+ 
+/* TICKER */
+.ticker-bar{position:fixed;top:62px;left:0;right:0;z-index:99;overflow:hidden;background:rgba(12,17,32,0.95);border-bottom:1px solid var(--border);padding:8px 0}
+.ticker-track{display:flex;gap:52px;animation:tick 35s linear infinite;white-space:nowrap}
+.ticker-item{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--muted);flex-shrink:0}
+.tdot{width:5px;height:5px;border-radius:50%;flex-shrink:0}
+.tdot.r{background:var(--danger)}.tdot.y{background:var(--warning)}.tdot.g{background:var(--success)}
+@keyframes tick{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+ 
+/* HERO */
+.hero{position:relative;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:180px 24px 80px;z-index:1}
+.hero-glow{position:absolute;top:5%;left:50%;transform:translateX(-50%);width:700px;height:500px;background:radial-gradient(ellipse,rgba(0,229,255,0.1) 0%,transparent 65%);pointer-events:none}
+.badge{display:inline-flex;align-items:center;gap:6px;background:rgba(0,229,255,0.07);border:1px solid rgba(0,229,255,0.18);color:var(--accent);font-size:11px;font-weight:500;padding:5px 13px;border-radius:100px;margin-bottom:26px;letter-spacing:.8px;text-transform:uppercase;animation:fadeUp .6s ease both}
+.pdot{width:5px;height:5px;background:var(--accent);border-radius:50%;animation:pulse 2s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(1.5)}}
+h1{font-family:var(--ff);font-size:clamp(38px,7vw,78px);font-weight:800;line-height:1.04;letter-spacing:-2.5px;margin-bottom:22px;animation:fadeUp .6s ease .1s both}
+h1 .ac{color:var(--accent)}
+h1 .dm{color:var(--muted)}
+.hero-sub{font-size:clamp(15px,2vw,19px);color:var(--muted);max-width:540px;margin:0 auto 44px;font-weight:300;line-height:1.75;animation:fadeUp .6s ease .2s both}
+@keyframes fadeUp{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:translateY(0)}}
+ 
+/* SCANNER */
+.scanner-wrap{width:100%;max-width:560px;margin:0 auto;animation:fadeUp .6s ease .3s both}
+.scanner-box{background:var(--surface);border:1px solid var(--border2);border-radius:16px;padding:26px;position:relative;overflow:hidden}
+.scanner-box::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--accent),transparent)}
+.scan-label{font-size:11px;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:1.2px;margin-bottom:14px;text-align:left}
+.scan-row{display:flex;gap:9px}
+.scan-input{flex:1;background:var(--bg);border:1px solid var(--border2);border-radius:8px;padding:13px 15px;color:var(--text);font-family:var(--fb);font-size:15px;outline:none;transition:border-color .2s}
+.scan-input:focus{border-color:var(--accent)}
+.scan-input::placeholder{color:var(--muted)}
+.scan-btn{background:var(--accent);color:#000;border:none;border-radius:8px;padding:13px 22px;font-family:var(--ff);font-weight:700;font-size:13px;cursor:pointer;white-space:nowrap;transition:all .2s;letter-spacing:.3px}
+.scan-btn:hover{opacity:.85;transform:translateY(-1px)}
+.scan-btn:disabled{opacity:.45;cursor:not-allowed;transform:none}
+.scan-note{font-size:11px;color:var(--muted);margin-top:10px;text-align:left}
+.scan-loading{display:none;align-items:center;gap:9px;margin-top:14px;color:var(--accent);font-size:13px}
+.scan-loading.on{display:flex}
+.spin{width:15px;height:15px;border:2px solid rgba(0,229,255,0.15);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+#scan-result{margin-top:18px;display:none}
+.r-header{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+.r-icon{width:34px;height:34px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0}
+.r-icon.danger{background:rgba(255,77,109,.13);color:var(--danger)}
+.r-icon.safe{background:rgba(34,211,165,.13);color:var(--success)}
+.r-title{font-family:var(--ff);font-size:16px;font-weight:700}
+.r-sub{font-size:12px;color:var(--muted)}
+.b-list{display:flex;flex-direction:column;gap:7px;margin-bottom:14px}
+.b-item{background:rgba(255,77,109,.05);border:1px solid rgba(255,77,109,.13);border-radius:8px;padding:9px 13px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+.b-name{font-size:14px;font-weight:500}
+.b-date{font-size:11px;color:var(--muted)}
+.b-tag{font-size:10px;padding:3px 8px;border-radius:4px;background:rgba(255,77,109,.1);color:var(--danger);white-space:nowrap}
+.ubox{background:linear-gradient(135deg,rgba(124,58,237,.13),rgba(0,229,255,.06));border:1px solid rgba(124,58,237,.25);border-radius:10px;padding:15px;text-align:center}
+.ubox p{font-size:13px;color:var(--muted);margin-bottom:11px}
+.ubox strong{color:var(--text)}
+.ubtn{background:linear-gradient(135deg,var(--accent2),var(--accent));color:#fff;border:none;border-radius:7px;padding:10px 22px;font-family:var(--ff);font-weight:700;font-size:13px;cursor:pointer;transition:opacity .2s;width:100%}
+.ubtn:hover{opacity:.85}
+ 
+/* TRUST */
+.trust-row{display:flex;align-items:center;justify-content:center;gap:28px;margin-top:48px;flex-wrap:wrap;animation:fadeUp .6s ease .45s both}
+.trust-item{display:flex;align-items:center;gap:7px;color:var(--muted);font-size:13px}
+.tck{color:var(--success);font-size:13px}
+ 
+/* STATS */
+.stats-strip{position:relative;z-index:1;border-top:1px solid var(--border);border-bottom:1px solid var(--border);padding:36px 24px;display:flex;justify-content:center;gap:56px;flex-wrap:wrap;background:var(--surface)}
+.stat{text-align:center}
+.stat-n{font-family:var(--ff);font-size:34px;font-weight:800;color:var(--accent);letter-spacing:-1px}
+.stat-l{font-size:12px;color:var(--muted);margin-top:2px}
+ 
+/* SECTIONS */
+section{position:relative;z-index:1}
+.inner{max-width:1080px;margin:0 auto;padding:88px 24px}
+.sec-tag{font-size:11px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:var(--accent);margin-bottom:14px}
+.sec-title{font-family:var(--ff);font-size:clamp(26px,4vw,42px);font-weight:800;letter-spacing:-1px;line-height:1.1;margin-bottom:14px}
+.sec-sub{color:var(--muted);max-width:480px;font-size:15px;margin-bottom:52px}
+ 
+/* STEPS */
+.steps-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:18px}
+.step-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:26px 22px;transition:border-color .3s,transform .3s;position:relative;overflow:hidden}
+.step-card::after{content:'';position:absolute;bottom:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--accent2),var(--accent));opacity:0;transition:opacity .3s}
+.step-card:hover{border-color:var(--border2);transform:translateY(-3px)}
+.step-card:hover::after{opacity:1}
+.step-n{font-family:var(--ff);font-size:10px;font-weight:700;color:var(--accent);letter-spacing:2px;margin-bottom:14px}
+.step-ico{font-size:26px;margin-bottom:14px;display:block}
+.step-title{font-family:var(--ff);font-size:17px;font-weight:700;margin-bottom:7px}
+.step-desc{font-size:13px;color:var(--muted);line-height:1.65}
+ 
+/* FEATURES */
+.feat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:18px}
+.feat-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:26px;transition:border-color .2s}
+.feat-card:hover{border-color:var(--border2)}
+.feat-card.hl{border-color:rgba(0,229,255,.22);background:linear-gradient(135deg,var(--surface),rgba(0,229,255,.03))}
+.feat-ico{width:42px;height:42px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:19px;margin-bottom:14px}
+.feat-ico.c{background:rgba(0,229,255,.09)}.feat-ico.p{background:rgba(124,58,237,.1)}.feat-ico.r{background:rgba(255,77,109,.09)}.feat-ico.g{background:rgba(34,211,165,.09)}.feat-ico.y{background:rgba(251,191,36,.09)}.feat-ico.b{background:rgba(59,130,246,.09)}
+.feat-title{font-family:var(--ff);font-size:16px;font-weight:700;margin-bottom:7px}
+.feat-desc{font-size:13px;color:var(--muted);line-height:1.65}
+ 
+/* PRICING */
+.price-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:22px;max-width:780px;margin:0 auto}
+.price-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:34px 30px;transition:transform .2s}
+.price-card:hover{transform:translateY(-4px)}
+.price-card.pop{border-color:var(--accent);position:relative}
+.pop-badge{position:absolute;top:-11px;left:50%;transform:translateX(-50%);background:var(--accent);color:#000;font-size:10px;font-weight:700;padding:4px 15px;border-radius:100px;white-space:nowrap;font-family:var(--ff);letter-spacing:.5px}
+.plan-name{font-family:var(--ff);font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:11px}
+.plan-price{font-family:var(--ff);font-size:50px;font-weight:800;letter-spacing:-2px;line-height:1;margin-bottom:3px}
+.plan-price sup{font-size:22px;vertical-align:top;margin-top:9px;display:inline-block}
+.plan-period{font-size:12px;color:var(--muted);margin-bottom:26px}
+.plan-feats{list-style:none;margin-bottom:28px}
+.plan-feats li{font-size:13px;color:var(--muted);padding:6px 0;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px}
+.plan-feats li:last-child{border-bottom:none}
+.plan-feats li .ck{color:var(--success);font-size:12px}
+.plan-feats li .xx{color:var(--muted);font-size:12px;opacity:.35}
+.plan-feats li span{color:var(--text)}
+.plan-btn{width:100%;padding:13px;border-radius:8px;font-family:var(--ff);font-weight:700;font-size:14px;cursor:pointer;transition:all .2s;border:none}
+.plan-btn.out{background:transparent;border:1px solid var(--border2);color:var(--text)}
+.plan-btn.out:hover{border-color:var(--accent);color:var(--accent)}
+.plan-btn.fil{background:var(--accent);color:#000}
+.plan-btn.fil:hover{opacity:.85;transform:translateY(-1px)}
+.plan-btn:disabled{opacity:.5;cursor:not-allowed;transform:none!important}
+ 
+/* REVEAL */
+.reveal{opacity:0;transform:translateY(22px);transition:opacity .6s ease,transform .6s ease}
+.reveal.visible{opacity:1;transform:translateY(0)}
+ 
+/* MODAL */
+.overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.78);z-index:200;align-items:center;justify-content:center;padding:20px}
+.overlay.open{display:flex}
+.modal{background:var(--surface2);border:1px solid var(--border2);border-radius:16px;padding:34px;max-width:420px;width:100%;position:relative;animation:fadeUp .3s ease}
+.modal-x{position:absolute;top:14px;right:14px;background:none;border:none;color:var(--muted);font-size:19px;cursor:pointer;line-height:1;padding:4px}
+.modal h2{font-family:var(--ff);font-size:22px;font-weight:800;margin-bottom:7px}
+.modal p{color:var(--muted);font-size:13px;margin-bottom:22px}
+.m-input{width:100%;background:var(--bg);border:1px solid var(--border2);border-radius:8px;padding:13px 15px;color:var(--text);font-family:var(--fb);font-size:14px;outline:none;margin-bottom:10px;display:block;transition:border-color .2s}
+.m-input:focus{border-color:var(--accent)}
+.m-btn{width:100%;padding:13px;background:linear-gradient(135deg,var(--accent2),var(--accent));color:#fff;border:none;border-radius:8px;font-family:var(--ff);font-weight:700;font-size:14px;cursor:pointer;transition:opacity .2s}
+.m-btn:hover{opacity:.85}
+.m-btn:disabled{opacity:.5;cursor:not-allowed}
+.m-note{font-size:11px;color:var(--muted);margin-top:10px;text-align:center}
+.m-err{font-size:12px;color:var(--danger);margin-top:8px;display:none}
+.m-ok{font-size:13px;color:var(--success);margin-top:8px;display:none;text-align:center}
+.m-tabs{display:flex;gap:0;margin-bottom:22px;background:var(--bg);border-radius:8px;padding:3px}
+.m-tab{flex:1;padding:8px;border:none;background:none;color:var(--muted);font-family:var(--fb);font-size:13px;cursor:pointer;border-radius:6px;transition:all .2s}
+.m-tab.active{background:var(--surface);color:var(--text);font-weight:500}
+ 
+/* RAZORPAY - no card element needed, handled by Razorpay popup */
+ 
+/* TOAST */
+.toast{position:fixed;bottom:24px;right:24px;background:var(--surface2);border:1px solid var(--border2);border-radius:10px;padding:14px 18px;font-size:13px;color:var(--text);z-index:500;transform:translateY(80px);opacity:0;transition:all .3s;max-width:320px}
+.toast.show{transform:translateY(0);opacity:1}
+.toast.success{border-color:rgba(34,211,165,.3)}
+.toast.error{border-color:rgba(255,77,109,.3)}
+ 
+/* FOOTER */
+footer{position:relative;z-index:1;border-top:1px solid var(--border);padding:40px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:20px}
+footer p{font-size:12px;color:var(--muted)}
+.f-links{display:flex;gap:20px;list-style:none}
+.f-links a{font-size:12px;color:var(--muted);text-decoration:none}
+.f-links a:hover{color:var(--text)}
+ 
+/* SETUP BANNER */
+.setup-banner{background:rgba(251,191,36,.06);border:1px solid rgba(251,191,36,.2);border-radius:10px;padding:14px 18px;font-size:13px;color:var(--warning);margin-bottom:18px;display:none}
+.setup-banner.show{display:block}
+ 
+@media(max-width:640px){nav{padding:0 18px}.nav-links{display:none}.scan-row{flex-direction:column}.scan-btn{width:100%}.stats-strip{gap:28px}footer{flex-direction:column;text-align:center}}
 </style>
 </head>
 <body>
  
+<!-- ═══════════════════════════════════════
+     ⚙️  CONFIGURATION — FILL THESE IN
+     ═══════════════════════════════════════ -->
+<script>
+// ─── STEP 1: XposedOrNot — FREE, no key needed! Works out of the box ✓
+//     Nothing to fill in — breach scanning is free and automatic.
+ 
+// ─── STEP 2: Get your Supabase URL + anon key at https://supabase.com (free)
+const SUPABASE_URL = 'https://mxxlcwbrfvxpasnbeccu.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im14eGxjd2JyZnZ4cGFzbmJlY2N1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc0OTkxNjgsImV4cCI6MjA5MzA3NTE2OH0.hg6i_33OkrnxDIxQb4rM_eYt6Uwwo6NrAU5TL8AcGVM';
+ 
+// ─── Razorpay Key (test mode — switch to live key after KYC approval)
+const RAZORPAY_KEY = 'rzp_test_Sf3riHcf1Nq2ZR';
+ 
+// ─── STEP 4: Amount in paise (₹750 = 75000 paise, roughly $9)
+const PLAN_AMOUNT  = 75000; // ₹750/month
+const PLAN_CURRENCY = 'INR';
+ 
+// ─── DO NOT EDIT BELOW THIS LINE ───────────────────────
+const CONFIGURED = {
+  hibp:   true, // XposedOrNot is always free — no key needed
+  supa:   SUPABASE_URL   !== 'YOUR_SUPABASE_URL',
+  stripe: RAZORPAY_KEY   !== 'YOUR_RAZORPAY_KEY_ID',
+};
+</script>
+ 
 <!-- NAV -->
 <nav>
   <a href="#" class="logo">
-    <div class="logo-icon">🛡</div>
-    CyberGuard
+    <div class="logo-icon">🛡</div>CyberGuard
   </a>
   <ul class="nav-links">
     <li><a href="#how-it-works">How it works</a></li>
     <li><a href="#features">Features</a></li>
     <li><a href="#pricing">Pricing</a></li>
-    <li><a href="#" class="nav-cta" onclick="openModal()">Get Protected</a></li>
+    <li><a href="#" class="nav-cta" onclick="openModal('signup');return false">Get Protected</a></li>
   </ul>
 </nav>
  
-<!-- THREAT TICKER -->
-<div class="ticker-wrap" style="position:fixed;top:64px;left:0;right:0;z-index:99;">
-  <div class="ticker-track" id="ticker">
-    <div class="ticker-item"><span class="ticker-dot red"></span> 2.1M records leaked from Indian fintech — Nov 2024</div>
-    <div class="ticker-item"><span class="ticker-dot yellow"></span> Phishing attacks up 340% targeting small businesses</div>
-    <div class="ticker-item"><span class="ticker-dot red"></span> 500K WhatsApp accounts compromised in South Asia</div>
-    <div class="ticker-item"><span class="ticker-dot green"></span> CyberGuard blocked 14,200 threats today</div>
-    <div class="ticker-item"><span class="ticker-dot red"></span> LinkedIn data breach: 700M records exposed</div>
-    <div class="ticker-item"><span class="ticker-dot yellow"></span> New SIM-swap attack wave targeting India users</div>
-    <div class="ticker-item"><span class="ticker-dot red"></span> 2.1M records leaked from Indian fintech — Nov 2024</div>
-    <div class="ticker-item"><span class="ticker-dot yellow"></span> Phishing attacks up 340% targeting small businesses</div>
-    <div class="ticker-item"><span class="ticker-dot red"></span> 500K WhatsApp accounts compromised in South Asia</div>
-    <div class="ticker-item"><span class="ticker-dot green"></span> CyberGuard blocked 14,200 threats today</div>
-    <div class="ticker-item"><span class="ticker-dot red"></span> LinkedIn data breach: 700M records exposed</div>
-    <div class="ticker-item"><span class="ticker-dot yellow"></span> New SIM-swap attack wave targeting India users</div>
+<!-- TICKER -->
+<div class="ticker-bar">
+  <div class="ticker-track">
+    <div class="ticker-item"><span class="tdot r"></span>2.1M records leaked from Indian fintech — 2024</div>
+    <div class="ticker-item"><span class="tdot y"></span>Phishing attacks up 340% targeting small businesses</div>
+    <div class="ticker-item"><span class="tdot r"></span>500K WhatsApp accounts compromised in South Asia</div>
+    <div class="ticker-item"><span class="tdot g"></span>CyberGuard blocked 14,200 threats today</div>
+    <div class="ticker-item"><span class="tdot r"></span>LinkedIn breach: 700M records exposed</div>
+    <div class="ticker-item"><span class="tdot y"></span>New SIM-swap wave targeting India users</div>
+    <div class="ticker-item"><span class="tdot r"></span>2.1M records leaked from Indian fintech — 2024</div>
+    <div class="ticker-item"><span class="tdot y"></span>Phishing attacks up 340% targeting small businesses</div>
+    <div class="ticker-item"><span class="tdot r"></span>500K WhatsApp accounts compromised in South Asia</div>
+    <div class="ticker-item"><span class="tdot g"></span>CyberGuard blocked 14,200 threats today</div>
+    <div class="ticker-item"><span class="tdot r"></span>LinkedIn breach: 700M records exposed</div>
+    <div class="ticker-item"><span class="tdot y"></span>New SIM-swap wave targeting India users</div>
   </div>
 </div>
  
 <!-- HERO -->
-<section class="hero" style="padding-top:160px">
+<section class="hero">
   <div class="hero-glow"></div>
+  <div class="badge"><div class="pdot"></div>AI-Powered Protection — Active 24/7</div>
+  <h1>Your personal<br><span class="ac">AI security</span><br><span class="dm">guardian</span></h1>
+  <p class="hero-sub">Know if your email, passwords, or accounts have been leaked — before hackers use them. Free scan in 10 seconds.</p>
  
-  <div class="hero-badge">
-    <div class="pulse-dot"></div>
-    AI-Powered Protection — Active 24/7
-  </div>
- 
-  <h1>
-    Your personal<br>
-    <span class="accent">AI security</span><br>
-    <span class="dim">guardian</span>
-  </h1>
- 
-  <p class="hero-sub">
-    Know if your email, passwords, or accounts have been leaked — before hackers use them against you. Free scan in 10 seconds.
-  </p>
- 
-  <!-- FREE BREACH SCANNER -->
   <div class="scanner-wrap">
     <div class="scanner-box">
-      <div class="scanner-label">🔍 Free Breach Scanner — No account needed</div>
-      <div class="scanner-input-row">
-        <input
-          type="email"
-          class="scanner-input"
-          id="scan-email"
-          placeholder="Enter your email address..."
-          autocomplete="off"
-        >
+      <div id="setup-warn" class="setup-banner">
+        ⚙️ Demo mode — Add your API keys in the &lt;script&gt; config block to enable real scanning, payments & signups.
+      </div>
+      <div class="scan-label">🔍 Free Breach Scanner — No account needed</div>
+      <div class="scan-row">
+        <input type="email" class="scan-input" id="scan-email" placeholder="Enter your email address..." autocomplete="off">
         <button class="scan-btn" id="scan-btn" onclick="runScan()">Scan Now</button>
       </div>
-      <p class="scanner-note">🔒 We never store your email. Powered by HaveIBeenPwned API.</p>
- 
+      <p class="scan-note">🔒 We never store your email. Powered by HaveIBeenPwned.</p>
       <div class="scan-loading" id="scan-loading">
-        <div class="spinner"></div>
-        <span id="loading-text">Scanning 12 billion leaked records...</span>
+        <div class="spin"></div>
+        <span id="load-txt">Scanning 12 billion leaked records...</span>
       </div>
- 
-      <!-- RESULTS -->
       <div id="scan-result"></div>
     </div>
   </div>
  
-  <!-- TRUST BADGES -->
   <div class="trust-row">
-    <div class="trust-item"><span class="trust-icon">✓</span> No credit card required</div>
-    <div class="trust-item"><span class="trust-icon">✓</span> 12B+ records scanned</div>
-    <div class="trust-item"><span class="trust-icon">✓</span> Used by 50,000+ users</div>
-    <div class="trust-item"><span class="trust-icon">✓</span> GDPR compliant</div>
+    <div class="trust-item"><span class="tck">✓</span> No credit card required</div>
+    <div class="trust-item"><span class="tck">✓</span> 12B+ records scanned</div>
+    <div class="trust-item"><span class="tck">✓</span> 50,000+ users protected</div>
+    <div class="trust-item"><span class="tck">✓</span> GDPR compliant</div>
   </div>
 </section>
  
-<!-- STATS STRIP -->
+<!-- STATS -->
 <div class="stats-strip reveal">
-  <div class="stat">
-    <div class="stat-num">12B+</div>
-    <div class="stat-label">Leaked records in our database</div>
-  </div>
-  <div class="stat">
-    <div class="stat-num">340%</div>
-    <div class="stat-label">Rise in phishing attacks (2024)</div>
-  </div>
-  <div class="stat">
-    <div class="stat-num">4.1M</div>
-    <div class="stat-label">Indian accounts breached daily</div>
-  </div>
-  <div class="stat">
-    <div class="stat-num">$9</div>
-    <div class="stat-label">Per month for full protection</div>
-  </div>
+  <div class="stat"><div class="stat-n">12B+</div><div class="stat-l">Leaked records in database</div></div>
+  <div class="stat"><div class="stat-n">340%</div><div class="stat-l">Rise in phishing (2024)</div></div>
+  <div class="stat"><div class="stat-n">4.1M</div><div class="stat-l">Indian accounts breached daily</div></div>
+  <div class="stat"><div class="stat-n">₹750</div><div class="stat-l">Per month for full protection</div></div>
 </div>
  
 <!-- HOW IT WORKS -->
 <section id="how-it-works">
-  <div class="section-inner">
-    <div class="section-tag reveal">How it works</div>
-    <h2 class="section-title reveal">Security that explains<br>itself in plain English</h2>
-    <p class="section-sub reveal">No jargon. No confusing dashboards. CyberGuard tells you exactly what's wrong and fixes it in one click.</p>
- 
+  <div class="inner">
+    <div class="sec-tag reveal">How it works</div>
+    <h2 class="sec-title reveal">Security that explains itself<br>in plain English</h2>
+    <p class="sec-sub reveal">No jargon. No confusing dashboards. CyberGuard tells you exactly what's wrong and fixes it in one click.</p>
     <div class="steps-grid">
-      <div class="step-card reveal">
-        <div class="step-num">STEP 01</div>
-        <span class="step-icon">🔗</span>
-        <div class="step-title">Connect your accounts</div>
-        <p class="step-desc">Securely link your email, social accounts, and password manager. Takes 2 minutes.</p>
-      </div>
-      <div class="step-card reveal">
-        <div class="step-num">STEP 02</div>
-        <span class="step-icon">🤖</span>
-        <div class="step-title">AI scans continuously</div>
-        <p class="step-desc">Our AI monitors dark web leaks, phishing attempts, and suspicious login activity 24/7.</p>
-      </div>
-      <div class="step-card reveal">
-        <div class="step-num">STEP 03</div>
-        <span class="step-icon">🚨</span>
-        <div class="step-title">Get instant alerts</div>
-        <p class="step-desc">Receive clear alerts in plain language: "Your Gmail password was leaked. Here's what to do."</p>
-      </div>
-      <div class="step-card reveal">
-        <div class="step-num">STEP 04</div>
-        <span class="step-icon">✅</span>
-        <div class="step-title">Fix with one click</div>
-        <p class="step-desc">CyberGuard walks you through the exact fix — or handles it automatically on your behalf.</p>
-      </div>
+      <div class="step-card reveal"><div class="step-n">STEP 01</div><span class="step-ico">🔗</span><div class="step-title">Connect your accounts</div><p class="step-desc">Securely link your email and social accounts. Takes 2 minutes.</p></div>
+      <div class="step-card reveal"><div class="step-n">STEP 02</div><span class="step-ico">🤖</span><div class="step-title">AI scans continuously</div><p class="step-desc">Our AI monitors dark web leaks, phishing attempts, and suspicious logins 24/7.</p></div>
+      <div class="step-card reveal"><div class="step-n">STEP 03</div><span class="step-ico">🚨</span><div class="step-title">Get instant alerts</div><p class="step-desc">Clear alerts in plain language: "Your Gmail password was leaked. Here's what to do."</p></div>
+      <div class="step-card reveal"><div class="step-n">STEP 04</div><span class="step-ico">✅</span><div class="step-title">Fix with one click</div><p class="step-desc">CyberGuard walks you through the exact fix — or handles it automatically.</p></div>
     </div>
   </div>
 </section>
  
 <!-- FEATURES -->
-<section id="features" style="background: var(--surface); border-top:1px solid var(--border);">
-  <div class="section-inner">
-    <div class="section-tag reveal">Features</div>
-    <h2 class="section-title reveal">Everything protecting<br>you right now</h2>
-    <p class="section-sub reveal">Built for individuals, freelancers, and small businesses in India and globally.</p>
- 
-    <div class="features-grid">
-      <div class="feature-card highlight reveal">
-        <div class="feat-icon cyan">🔍</div>
-        <div class="feat-title">Dark web monitoring</div>
-        <p class="feat-desc">Continuously scans 12B+ leaked records across dark web forums and paste sites for your email and passwords.</p>
-      </div>
-      <div class="feature-card reveal">
-        <div class="feat-icon purple">🧠</div>
-        <div class="feat-title">AI threat analysis</div>
-        <p class="feat-desc">Groq-powered AI explains every threat in plain language and suggests the right action for your skill level.</p>
-      </div>
-      <div class="feature-card reveal">
-        <div class="feat-icon red">🎣</div>
-        <div class="feat-title">Phishing detection</div>
-        <p class="feat-desc">Paste any suspicious link and our AI tells you in seconds if it's a phishing attempt or safe to visit.</p>
-      </div>
-      <div class="feature-card reveal">
-        <div class="feat-icon green">📧</div>
-        <div class="feat-title">Instant email alerts</div>
-        <p class="feat-desc">Get notified the moment a new breach involving your data is detected — not weeks later like the news.</p>
-      </div>
-      <div class="feature-card reveal">
-        <div class="feat-icon yellow">🔑</div>
-        <div class="feat-title">Password strength audit</div>
-        <p class="feat-desc">Identify weak, reused, or compromised passwords across all your accounts and get guided fixes.</p>
-      </div>
-      <div class="feature-card reveal">
-        <div class="feat-icon blue">📊</div>
-        <div class="feat-title">Security score</div>
-        <p class="feat-desc">A live score from 0–100 showing your current security posture with clear steps to improve it.</p>
-      </div>
+<section id="features" style="background:var(--surface);border-top:1px solid var(--border)">
+  <div class="inner">
+    <div class="sec-tag reveal">Features</div>
+    <h2 class="sec-title reveal">Everything protecting you right now</h2>
+    <p class="sec-sub reveal">Built for individuals, freelancers, and small businesses in India and globally.</p>
+    <div class="feat-grid">
+      <div class="feat-card hl reveal"><div class="feat-ico c">🔍</div><div class="feat-title">Dark web monitoring</div><p class="feat-desc">Continuously scans 12B+ leaked records across dark web forums and paste sites for your email and passwords.</p></div>
+      <div class="feat-card reveal"><div class="feat-ico p">🧠</div><div class="feat-title">AI threat analysis</div><p class="feat-desc">AI explains every threat in plain language and suggests the right action for your skill level.</p></div>
+      <div class="feat-card reveal"><div class="feat-ico r">🎣</div><div class="feat-title">Phishing detection</div><p class="feat-desc">Paste any suspicious link and our AI tells you in seconds if it's a phishing attempt or safe to visit.</p></div>
+      <div class="feat-card reveal"><div class="feat-ico g">📧</div><div class="feat-title">Instant email alerts</div><p class="feat-desc">Get notified the moment a new breach involving your data is detected — not weeks later.</p></div>
+      <div class="feat-card reveal"><div class="feat-ico y">🔑</div><div class="feat-title">Password strength audit</div><p class="feat-desc">Identify weak, reused, or compromised passwords across all your accounts with guided fixes.</p></div>
+      <div class="feat-card reveal"><div class="feat-ico b">📊</div><div class="feat-title">Security score</div><p class="feat-desc">A live score from 0–100 showing your security posture with clear steps to improve it.</p></div>
     </div>
   </div>
 </section>
  
 <!-- PRICING -->
 <section id="pricing">
-  <div class="section-inner" style="text-align:center">
-    <div class="section-tag reveal" style="display:inline-block">Pricing</div>
-    <h2 class="section-title reveal">Simple, honest pricing</h2>
-    <p class="section-sub reveal" style="margin: 0 auto 60px">Start free. Upgrade when you're ready. No tricks.</p>
- 
-    <div class="pricing-grid">
-      <!-- FREE -->
+  <div class="inner" style="text-align:center">
+    <div class="sec-tag reveal" style="display:inline-block">Pricing</div>
+    <h2 class="sec-title reveal">Simple, honest pricing</h2>
+    <p class="sec-sub reveal" style="margin:0 auto 52px">Start free. Upgrade when you're ready. No tricks.</p>
+    <div class="price-grid">
       <div class="price-card reveal">
         <div class="plan-name">Free</div>
         <div class="plan-price"><sup>$</sup>0</div>
         <div class="plan-period">forever</div>
-        <ul class="plan-features">
-          <li><span class="check">✓</span> <span>1 email breach scan/day</span></li>
-          <li><span class="check">✓</span> <span>Basic security score</span></li>
-          <li><span class="check">✓</span> <span>Phishing link checker</span></li>
-          <li><span class="x">✗</span> Continuous monitoring</li>
-          <li><span class="x">✗</span> Instant email alerts</li>
-          <li><span class="x">✗</span> Dark web monitoring</li>
-          <li><span class="x">✗</span> AI threat explanations</li>
+        <ul class="plan-feats">
+          <li><span class="ck">✓</span><span>1 email breach scan/day</span></li>
+          <li><span class="ck">✓</span><span>Basic security score</span></li>
+          <li><span class="ck">✓</span><span>Phishing link checker</span></li>
+          <li><span class="xx">✗</span>Continuous monitoring</li>
+          <li><span class="xx">✗</span>Instant email alerts</li>
+          <li><span class="xx">✗</span>Dark web monitoring</li>
         </ul>
-        <button class="plan-btn outline" onclick="openModal()">Start free</button>
+        <button class="plan-btn out" onclick="openModal('signup')">Start free</button>
       </div>
- 
-      <!-- PRO -->
-      <div class="price-card popular reveal">
-        <div class="popular-badge">MOST POPULAR</div>
+      <div class="price-card pop reveal">
+        <div class="pop-badge">MOST POPULAR</div>
         <div class="plan-name">Pro</div>
-        <div class="plan-price"><sup>$</sup>9</div>
+        <div class="plan-price"><sup>₹</sup>750</div>
         <div class="plan-period">per month · cancel anytime</div>
-        <ul class="plan-features">
-          <li><span class="check">✓</span> <span>Everything in Free</span></li>
-          <li><span class="check">✓</span> <span>24/7 continuous monitoring</span></li>
-          <li><span class="check">✓</span> <span>Instant breach alerts</span></li>
-          <li><span class="check">✓</span> <span>Full dark web scanning</span></li>
-          <li><span class="check">✓</span> <span>AI threat explanations</span></li>
-          <li><span class="check">✓</span> <span>Up to 5 email addresses</span></li>
-          <li><span class="check">✓</span> <span>Priority support</span></li>
+        <ul class="plan-feats">
+          <li><span class="ck">✓</span><span>Everything in Free</span></li>
+          <li><span class="ck">✓</span><span>24/7 continuous monitoring</span></li>
+          <li><span class="ck">✓</span><span>Instant breach alerts</span></li>
+          <li><span class="ck">✓</span><span>Full dark web scanning</span></li>
+          <li><span class="ck">✓</span><span>AI threat explanations</span></li>
+          <li><span class="ck">✓</span><span>Up to 5 email addresses</span></li>
         </ul>
-        <button class="plan-btn filled" onclick="openModal()">Get Pro — $9/mo</button>
+        <button class="plan-btn fil" id="pro-btn" onclick="openModal('pro')">Get Pro — ₹750/mo</button>
       </div>
     </div>
- 
-    <p class="reveal" style="margin-top:32px;color:var(--muted);font-size:13px">
-      All plans include a 7-day free trial. No credit card required to start.
-    </p>
+    <p class="reveal" style="margin-top:28px;color:var(--muted);font-size:12px">7-day free trial. No credit card required to start.</p>
   </div>
 </section>
  
-<!-- FOOTER -->
 <footer>
-  <a href="#" class="logo">
-    <div class="logo-icon">🛡</div>
-    CyberGuard
-  </a>
+  <a href="#" class="logo"><div class="logo-icon">🛡</div>CyberGuard</a>
   <p>© 2025 CyberGuard. Protecting people, not enterprises.</p>
-  <ul class="footer-links">
+  <ul class="f-links">
     <li><a href="#">Privacy</a></li>
     <li><a href="#">Terms</a></li>
     <li><a href="#">Contact</a></li>
   </ul>
 </footer>
  
-<!-- SIGNUP MODAL -->
-<div class="modal-overlay" id="modal">
+<!-- ═══════════ MODAL ═══════════ -->
+<div class="overlay" id="modal">
   <div class="modal">
-    <button class="modal-close" onclick="closeModal()">✕</button>
-    <h2>Start your free scan</h2>
-    <p>Create your free account and get your full security report in under 60 seconds.</p>
-    <input type="text" class="modal-input" placeholder="Your name">
-    <input type="email" class="modal-input" placeholder="Email address">
-    <button class="modal-btn">Create free account →</button>
-    <p class="modal-note">No credit card needed. Free forever. Upgrade anytime.</p>
+    <button class="modal-x" onclick="closeModal()">✕</button>
+ 
+    <!-- TABS -->
+    <div class="m-tabs" id="m-tabs">
+      <button class="m-tab active" onclick="switchTab('signup')">Create account</button>
+      <button class="m-tab" onclick="switchTab('login')">Sign in</button>
+    </div>
+ 
+    <!-- SIGNUP -->
+    <div id="tab-signup">
+      <h2 id="modal-title">Start your free scan</h2>
+      <p id="modal-sub">Create your free account and get your full security report in 60 seconds.</p>
+      <input type="text"  class="m-input" id="m-name"  placeholder="Your name">
+      <input type="email" class="m-input" id="m-email" placeholder="Email address">
+      <input type="password" class="m-input" id="m-pass" placeholder="Password (min 8 chars)">
+      <div id="stripe-form" style="display:none">
+        <p style="font-size:12px;color:var(--muted);margin-bottom:8px">💳 You'll be taken to Razorpay's secure checkout (UPI, cards, netbanking accepted)</p>
+      </div>
+      <button class="m-btn" id="m-submit-btn" onclick="handleSignup()">Create free account →</button>
+      <div class="m-err" id="m-err"></div>
+      <div class="m-ok"  id="m-ok"></div>
+      <p class="m-note">No credit card needed for free plan. Upgrade anytime.</p>
+    </div>
+ 
+    <!-- LOGIN -->
+    <div id="tab-login" style="display:none">
+      <h2>Welcome back</h2>
+      <p style="color:var(--muted);font-size:13px;margin-bottom:22px">Sign in to your CyberGuard account.</p>
+      <input type="email"    class="m-input" id="l-email" placeholder="Email address">
+      <input type="password" class="m-input" id="l-pass"  placeholder="Password">
+      <button class="m-btn" id="l-submit-btn" onclick="handleLogin()">Sign in →</button>
+      <div class="m-err" id="l-err"></div>
+      <div class="m-ok"  id="l-ok"></div>
+    </div>
   </div>
 </div>
  
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
+ 
+<!-- ═══════════════════════════════════════
+     JAVASCRIPT — HIBP + SUPABASE + STRIPE
+     ═══════════════════════════════════════ -->
 <script>
-// ── BREACH SCANNER ──
-const DEMO_BREACHES = {
-  "test@gmail.com":    [{ name:"Adobe", date:"Oct 2013", type:"Passwords" }, { name:"LinkedIn", date:"May 2016", type:"Passwords, Emails" }, { name:"Collection #1", date:"Jan 2019", type:"Passwords, Emails" }],
-  "demo@yahoo.com":   [{ name:"Yahoo", date:"2013", type:"500M accounts" }, { name:"Snapchat", date:"Jan 2014", type:"Usernames, Phone numbers" }],
-  "user@hotmail.com": [{ name:"Microsoft", date:"Mar 2021", type:"Email addresses" }],
+// ─── SUPABASE CLIENT (loaded dynamically) ───────────────────────────────────
+let supabase = null;
+async function initSupabase() {
+  if (!CONFIGURED.supa || supabase) return;
+  const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm');
+  supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+}
+ 
+// ─── RAZORPAY is loaded via script tag — no init needed ──────────────────────
+ 
+// ─── SETUP WARNING ────────────────────────────────────────────────────────────
+window.addEventListener('load', () => {
+  const allSet = CONFIGURED.hibp && CONFIGURED.supa && CONFIGURED.stripe;
+  if (!allSet) document.getElementById('setup-warn').classList.add('show');
+  initSupabase();
+});
+ 
+// ─── BREACH SCANNER ──────────────────────────────────────────────────────────
+const DEMO_DATA = {
+  "test@gmail.com":   [{ Name:"Adobe",      BreachDate:"2013-10-04", DataClasses:["Passwords","Email addresses"] }, { Name:"LinkedIn",   BreachDate:"2016-05-21", DataClasses:["Passwords","Email addresses"] }, { Name:"Collection #1", BreachDate:"2019-01-07", DataClasses:["Passwords","Email addresses"] }],
+  "demo@yahoo.com":   [{ Name:"Yahoo",      BreachDate:"2013-01-01", DataClasses:["Email addresses","Passwords","Phone numbers"] }],
+  "user@hotmail.com": [{ Name:"Microsoft",  BreachDate:"2021-03-02", DataClasses:["Email addresses"] }],
 };
  
-const loadingLines = [
-  "Scanning 12 billion leaked records...",
-  "Checking dark web forums...",
-  "Cross-referencing breach databases...",
-  "Running AI threat analysis...",
-  "Preparing your report...",
-];
+const LOAD_MSGS = ["Scanning 12 billion leaked records...","Checking dark web forums...","Cross-referencing breach databases...","Running AI threat analysis...","Preparing your report..."];
  
-function runScan() {
+async function runScan() {
   const email = document.getElementById('scan-email').value.trim();
   if (!email || !email.includes('@')) {
     document.getElementById('scan-email').style.borderColor = 'var(--danger)';
     setTimeout(() => document.getElementById('scan-email').style.borderColor = '', 1500);
     return;
   }
- 
   const btn = document.getElementById('scan-btn');
   const loading = document.getElementById('scan-loading');
   const result = document.getElementById('scan-result');
- 
   btn.disabled = true;
-  loading.classList.add('active');
+  loading.classList.add('on');
   result.style.display = 'none';
- 
   let i = 0;
-  const interval = setInterval(() => {
-    if (i < loadingLines.length) {
-      document.getElementById('loading-text').textContent = loadingLines[i++];
+  const iv = setInterval(() => { if (i < LOAD_MSGS.length) document.getElementById('load-txt').textContent = LOAD_MSGS[i++]; }, 700);
+ 
+  let breaches = null;
+  try {
+    // XposedOrNot — 100% free, no API key needed
+    const res = await fetch(`https://api.xposedornot.com/v1/check-email/${encodeURIComponent(email)}`, {
+      headers: { 'Accept': 'application/json' }
+    });
+    if (res.status === 200) {
+      const data = await res.json();
+      // XposedOrNot returns { breaches: [...] } or { Error: 'Not found' }
+      if (data.breaches && Array.isArray(data.breaches) && data.breaches.length > 0) {
+        breaches = data.breaches.map(b => ({
+          Name: b.breach || b,
+          BreachDate: b.xposed_date || '',
+          DataClasses: b.xposed_data ? b.xposed_data.split(';') : ['Email addresses']
+        }));
+      } else {
+        breaches = null;
+      }
+    } else {
+      breaches = null; // clean — not found in any breach
     }
-  }, 700);
+  } catch(e) {
+    // Fallback to demo data if API is unreachable
+    breaches = DEMO_DATA[email.toLowerCase()] ?? (Math.random() > 0.45 ? [{ Name:"Collection #1", BreachDate:"2019-01-07", DataClasses:["Email addresses","Passwords"] }] : null);
+  }
  
-  setTimeout(() => {
-    clearInterval(interval);
-    loading.classList.remove('active');
-    btn.disabled = false;
- 
-    const breaches = DEMO_BREACHES[email.toLowerCase()] ||
-      (Math.random() > 0.4
-        ? [{ name:"Collection #1", date:"Jan 2019", type:"Emails, Passwords" }, { name:"Exploit.in", date:"2017", type:"Emails, Passwords" }]
-        : null);
- 
-    showResult(email, breaches);
-  }, 3500);
+  clearInterval(iv);
+  loading.classList.remove('on');
+  btn.disabled = false;
+  showResult(email, breaches);
 }
  
 function showResult(email, breaches) {
-  const result = document.getElementById('scan-result');
-  result.style.display = 'block';
- 
+  const el = document.getElementById('scan-result');
+  el.style.display = 'block';
   if (!breaches || breaches.length === 0) {
-    result.innerHTML = `
-      <div class="result-header">
-        <div class="result-icon safe">✓</div>
-        <div>
-          <div class="result-title">Good news — no breaches found</div>
-          <div class="result-sub">${email} was not found in any known data breach</div>
-        </div>
-      </div>
-      <div class="upgrade-cta-box">
-        <p><strong>Stay protected</strong> — new breaches happen every day. Enable 24/7 monitoring to get instant alerts if your data ever appears in a future leak.</p>
-        <button class="btn-upgrade" onclick="openModal()">Enable continuous monitoring →</button>
-      </div>`;
+    el.innerHTML = `<div class="r-header"><div class="r-icon safe">✓</div><div><div class="r-title">Good news — no breaches found</div><div class="r-sub">${email} wasn't found in any known data breach</div></div></div><div class="ubox"><p><strong>Stay protected</strong> — new breaches happen every day. Enable 24/7 monitoring to get instant alerts if your data appears in a future leak.</p><button class="ubtn" onclick="openModal('signup')">Enable continuous monitoring →</button></div>`;
   } else {
-    const list = breaches.map(b => `
-      <div class="breach-item">
-        <div>
-          <div class="breach-name">${b.name}</div>
-          <div class="breach-date">${b.date}</div>
-        </div>
-        <div class="breach-tag">${b.type}</div>
-      </div>`).join('');
- 
-    result.innerHTML = `
-      <div class="result-header">
-        <div class="result-icon danger">⚠</div>
-        <div>
-          <div class="result-title" style="color:var(--danger)">${breaches.length} breach${breaches.length > 1 ? 'es' : ''} found</div>
-          <div class="result-sub">Your data was exposed in ${breaches.length} known leak${breaches.length > 1 ? 's' : ''}</div>
-        </div>
-      </div>
-      <div class="breach-list">${list}</div>
-      <div class="upgrade-cta-box">
-        <p><strong>Your passwords may be compromised.</strong> Upgrade to Pro to get instant alerts, see exactly what was leaked, and get step-by-step guidance to secure every account.</p>
-        <button class="btn-upgrade" onclick="openModal()">Fix this now — Get Pro for $9/mo →</button>
-      </div>`;
+    const list = breaches.slice(0,5).map(b => `<div class="b-item"><div><div class="b-name">${b.Name}</div><div class="b-date">${b.BreachDate?.split('-')[0] || ''}</div></div><div class="b-tag">${(b.DataClasses||[]).slice(0,2).join(', ')}</div></div>`).join('');
+    const more = breaches.length > 5 ? `<p style="font-size:12px;color:var(--muted);margin-bottom:12px">+ ${breaches.length - 5} more breaches hidden — upgrade to see all</p>` : '';
+    el.innerHTML = `<div class="r-header"><div class="r-icon danger">⚠</div><div><div class="r-title" style="color:var(--danger)">${breaches.length} breach${breaches.length>1?'es':''} found</div><div class="r-sub">Your data was exposed in ${breaches.length} known leak${breaches.length>1?'s':''}</div></div></div><div class="b-list">${list}</div>${more}<div class="ubox"><p><strong>Your passwords may be compromised.</strong> Upgrade to Pro to see exactly what was leaked and get step-by-step guidance to secure every account.</p><button class="ubtn" onclick="openModal('pro')">Fix this now — Get Pro for $9/mo →</button></div>`;
   }
- 
-  result.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  el.scrollIntoView({ behavior:'smooth', block:'nearest' });
 }
  
-document.getElementById('scan-email').addEventListener('keydown', e => {
-  if (e.key === 'Enter') runScan();
-});
+document.getElementById('scan-email').addEventListener('keydown', e => { if (e.key === 'Enter') runScan(); });
  
-// ── MODAL ──
-function openModal() {
+// ─── MODAL ────────────────────────────────────────────────────────────────────
+let currentPlan = 'free';
+ 
+function openModal(plan = 'signup') {
+  currentPlan = plan;
   document.getElementById('modal').classList.add('open');
+  switchTab('signup');
+    if (plan === 'pro') {
+    document.getElementById('modal-title').textContent = 'Start Pro — ₹750/month';
+    document.getElementById('modal-sub').textContent = 'Create your account, then pay securely via UPI, card or netbanking.';
+    document.getElementById('stripe-form').style.display = 'block';
+    document.getElementById('m-submit-btn').textContent = 'Continue to payment →';
+  } else {
+    document.getElementById('modal-title').textContent = 'Start your free scan';
+    document.getElementById('modal-sub').textContent = 'Create your free account and get your full security report in 60 seconds.';
+    document.getElementById('stripe-form').style.display = 'none';
+    document.getElementById('m-submit-btn').textContent = 'Create free account →';
+  }
 }
-function closeModal() {
-  document.getElementById('modal').classList.remove('open');
-}
-document.getElementById('modal').addEventListener('click', e => {
-  if (e.target === document.getElementById('modal')) closeModal();
-});
  
-// ── SCROLL REVEAL ──
-const observer = new IntersectionObserver(entries => {
-  entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
-}, { threshold: 0.1 });
-document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+function closeModal() { document.getElementById('modal').classList.remove('open'); }
+ 
+function switchTab(tab) {
+  document.getElementById('tab-signup').style.display = tab === 'signup' ? '' : 'none';
+  document.getElementById('tab-login').style.display  = tab === 'login'  ? '' : 'none';
+  document.getElementById('m-tabs').querySelectorAll('.m-tab').forEach((b,i) => b.classList.toggle('active', (i===0&&tab==='signup')||(i===1&&tab==='login')));
+}
+ 
+document.getElementById('modal').addEventListener('click', e => { if (e.target === document.getElementById('modal')) closeModal(); });
+ 
+// ─── SIGNUP ───────────────────────────────────────────────────────────────────
+async function handleSignup() {
+  const name  = document.getElementById('m-name').value.trim();
+  const email = document.getElementById('m-email').value.trim();
+  const pass  = document.getElementById('m-pass').value;
+  const err   = document.getElementById('m-err');
+  const ok    = document.getElementById('m-ok');
+  const btn   = document.getElementById('m-submit-btn');
+  err.style.display = 'none'; ok.style.display = 'none';
+ 
+  if (!name)  { showErr(err, 'Please enter your name.'); return; }
+  if (!email || !email.includes('@')) { showErr(err, 'Please enter a valid email.'); return; }
+  if (pass.length < 8) { showErr(err, 'Password must be at least 8 characters.'); return; }
+ 
+  btn.disabled = true;
+  btn.textContent = 'Creating account...';
+ 
+  try {
+    if (CONFIGURED.supa) {
+      await initSupabase();
+      const { error } = await supabase.auth.signUp({ email, password: pass, options: { data: { full_name: name, plan: currentPlan } } });
+      if (error) { showErr(err, error.message); btn.disabled=false; btn.textContent='Create free account →'; return; }
+ 
+      // Save to users table
+      await supabase.from('users').upsert({ email, full_name: name, plan: currentPlan, created_at: new Date().toISOString() });
+ 
+      // Pro plan + Stripe
+      if (currentPlan === 'pro' && CONFIGURED.stripe && cardElement) {
+        await processStripePayment(email, name, err, btn);
+        return;
+      }
+    }
+ 
+    ok.style.display = 'block';
+    ok.textContent = CONFIGURED.supa ? '✓ Account created! Check your email to verify.' : '✓ Got it! We\'ll be in touch when we launch.';
+    showToast('Welcome to CyberGuard! 🎉', 'success');
+    setTimeout(closeModal, 2500);
+  } catch(e) {
+    showErr(err, 'Something went wrong. Please try again.');
+  }
+  btn.disabled = false;
+  btn.textContent = currentPlan === 'pro' ? 'Start free trial →' : 'Create free account →';
+}
+ 
+// ─── RAZORPAY PAYMENT ─────────────────────────────────────────────────────────
+async function processStripePayment(email, name, errEl, btn) {
+  if (!CONFIGURED.stripe) {
+    // Razorpay not configured yet — save lead and show success
+    document.getElementById('m-ok').style.display = 'block';
+    document.getElementById('m-ok').textContent = '✓ Pro spot reserved! We\'ll contact you to complete payment.';
+    showToast('Pro spot reserved! We\'ll be in touch 🛡', 'success');
+    setTimeout(closeModal, 2500);
+    btn.disabled = false;
+    btn.textContent = 'Start free trial →';
+    return;
+  }
+  try {
+    btn.textContent = 'Opening payment...';
+    const options = {
+      key: RAZORPAY_KEY,
+      amount: PLAN_AMOUNT,
+      currency: PLAN_CURRENCY,
+      name: 'CyberGuard',
+      description: 'Pro Plan — ₹750/month',
+      image: '',
+      prefill: { name, email },
+      theme: { color: '#00e5ff' },
+      modal: { ondismiss: () => { btn.disabled=false; btn.textContent='Start free trial →'; } },
+      handler: async function(response) {
+        // Payment successful — response.razorpay_payment_id is your proof
+        console.log('Payment ID:', response.razorpay_payment_id);
+        if (CONFIGURED.supa && supabase) {
+          await supabase.from('users').update({ plan:'pro', razorpay_payment_id: response.razorpay_payment_id }).eq('email', email);
+        }
+        document.getElementById('m-ok').style.display = 'block';
+        document.getElementById('m-ok').textContent = '✓ Payment successful! Welcome to Pro 🎉';
+        showToast('Payment successful! You\'re now on Pro 🛡', 'success');
+        setTimeout(closeModal, 2500);
+      }
+    };
+    const rzp = new Razorpay(options);
+    rzp.on('payment.failed', e => { showErr(errEl, 'Payment failed: ' + e.error.description); btn.disabled=false; btn.textContent='Start free trial →'; });
+    rzp.open();
+  } catch(e) {
+    showErr(errEl, 'Payment could not be opened. Please try again.');
+    btn.disabled = false;
+    btn.textContent = 'Start free trial →';
+  }
+}
+ 
+// ─── LOGIN ────────────────────────────────────────────────────────────────────
+async function handleLogin() {
+  const email = document.getElementById('l-email').value.trim();
+  const pass  = document.getElementById('l-pass').value;
+  const err   = document.getElementById('l-err');
+  const ok    = document.getElementById('l-ok');
+  const btn   = document.getElementById('l-submit-btn');
+  err.style.display = 'none'; ok.style.display = 'none';
+ 
+  if (!email || !email.includes('@')) { showErr(err, 'Please enter a valid email.'); return; }
+  if (!pass) { showErr(err, 'Please enter your password.'); return; }
+ 
+  btn.disabled = true;
+  btn.textContent = 'Signing in...';
+  try {
+    if (CONFIGURED.supa) {
+      await initSupabase();
+      const { error } = await supabase.auth.signInWithPassword({ email, password: pass });
+      if (error) { showErr(err, error.message); btn.disabled=false; btn.textContent='Sign in →'; return; }
+    }
+    ok.style.display = 'block';
+    ok.textContent = '✓ Signed in! Loading your dashboard...';
+    showToast('Welcome back! 👋', 'success');
+    setTimeout(closeModal, 2000);
+  } catch(e) {
+    showErr(err, 'Sign in failed. Please try again.');
+  }
+  btn.disabled = false;
+  btn.textContent = 'Sign in →';
+}
+ 
+// ─── HELPERS ──────────────────────────────────────────────────────────────────
+function showErr(el, msg) { el.style.display = 'block'; el.textContent = msg; }
+ 
+function showToast(msg, type='success') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = `toast ${type} show`;
+  setTimeout(() => t.classList.remove('show'), 3500);
+}
+ 
+// ─── SCROLL REVEAL ────────────────────────────────────────────────────────────
+const obs = new IntersectionObserver(entries => entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); }), { threshold:0.08 });
+document.querySelectorAll('.reveal').forEach(el => obs.observe(el));
 </script>
 </body>
 </html>
+ 

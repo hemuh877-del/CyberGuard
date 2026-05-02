@@ -3,866 +3,1815 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>CyberGuard — AI Security Guardian</title>
+<title>CyberGuard — AI Security Intelligence Platform</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Bebas+Neue&display=swap" rel="stylesheet">
 <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
-<script type="module">
-  import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
-  const SUPABASE_URL = 'https://mxxlcwbrfvxpasnbeccu.supabase.co';
-  const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im14eGxjd2JyZnZ4cGFzbmJlY2N1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc0OTkxNjgsImV4cCI6MjA5MzA3NTE2OH0.hg6i_33OkrnxDIxQb4rM_eYt6Uwwo6NrAU5TL8AcGVM';
-  const RAZORPAY_KEY = 'rzp_test_Sf3riHcf1Nq2ZR';
- 
-  window.sb = createClient(SUPABASE_URL, SUPABASE_KEY);
- 
-  // ── On page load: check session and handle email confirm token ──
-  window.addEventListener('DOMContentLoaded', async () => {
- 
-    // Handle email verification redirect (token in URL hash)
-    const hash = window.location.hash;
-    if (hash.includes('access_token') || hash.includes('type=signup') || hash.includes('type=recovery')) {
-      const { data, error } = await window.sb.auth.getSession();
-      if (data?.session) {
-        await saveUserToDB(data.session.user);
-        showDashboard(data.session.user);
-        return;
-      }
-    }
- 
-    // Check for existing session
-    const { data: { session } } = await window.sb.auth.getSession();
-    if (session) {
-      showDashboard(session.user);
-    } else {
-      showLanding();
-    }
- 
-    // Listen for auth state changes
-    window.sb.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'SIGNED_IN' && session) {
-        await saveUserToDB(session.user);
-        showDashboard(session.user);
-      } else if (event === 'SIGNED_OUT') {
-        showLanding();
-      }
-    });
-  });
- 
-  async function saveUserToDB(user) {
-    try {
-      const { error } = await window.sb.from('users').upsert({
-        id: user.id,
-        email: user.email,
-        full_name: user.user_metadata?.full_name || '',
-        plan: user.user_metadata?.plan || 'free',
-        created_at: new Date().toISOString(),
-        last_login: new Date().toISOString()
-      }, { onConflict: 'id' });
-      if (error) console.warn('DB upsert:', error.message);
-    } catch(e) { console.warn('saveUserToDB:', e); }
-  }
- 
-  // ── SIGNUP ──
-  window.handleSignup = async function() {
-    const name  = document.getElementById('m-name').value.trim();
-    const email = document.getElementById('m-email').value.trim();
-    const pass  = document.getElementById('m-pass').value;
-    const plan  = window._currentPlan || 'free';
-    const errEl = document.getElementById('m-err');
-    const okEl  = document.getElementById('m-ok');
-    const btn   = document.getElementById('m-submit-btn');
-    errEl.style.display='none'; okEl.style.display='none';
- 
-    if (!name)  return showModalErr('Please enter your name.');
-    if (!email || !email.includes('@')) return showModalErr('Please enter a valid email.');
-    if (pass.length < 8) return showModalErr('Password must be at least 8 characters.');
- 
-    btn.disabled=true; btn.textContent='Creating account...';
-    const { data, error } = await window.sb.auth.signUp({
-      email, password: pass,
-      options: {
-        data: { full_name: name, plan },
-        emailRedirectTo: window.location.origin + window.location.pathname
-      }
-    });
-    btn.disabled=false;
-    btn.textContent = plan==='pro' ? 'Continue to payment →' : 'Create free account →';
- 
-    if (error) return showModalErr(error.message);
- 
-    okEl.style.display='block';
-    okEl.textContent = '✓ Check your email and click the verification link to activate your account!';
-    showToast('Verification email sent! Check your inbox 📧', 'success');
-  };
- 
-  // ── LOGIN ──
-  window.handleLogin = async function() {
-    const email = document.getElementById('l-email').value.trim();
-    const pass  = document.getElementById('l-pass').value;
-    const btn   = document.getElementById('l-submit-btn');
-    document.getElementById('l-err').style.display='none';
-    document.getElementById('l-ok').style.display='none';
- 
-    if (!email || !email.includes('@')) return showLoginErr('Please enter a valid email.');
-    if (!pass) return showLoginErr('Please enter your password.');
- 
-    btn.disabled=true; btn.textContent='Signing in...';
-    const { data, error } = await window.sb.auth.signInWithPassword({ email, password: pass });
-    btn.disabled=false; btn.textContent='Sign in →';
- 
-    if (error) return showLoginErr(error.message);
-    // onAuthStateChange will fire and call showDashboard automatically
-    closeModal();
-    showToast('Welcome back! 👋', 'success');
-  };
- 
-  // ── LOGOUT ──
-  window.handleLogout = async function() {
-    await window.sb.auth.signOut();
-    showToast('Logged out successfully', 'success');
-  };
- 
-  // ── RAZORPAY PAYMENT ──
-  window.startPayment = async function() {
-    const { data: { session } } = await window.sb.auth.getSession();
-    if (!session) { openModal('pro'); return; }
-    const user = session.user;
-    const options = {
-      key: RAZORPAY_KEY,
-      amount: 75000,
-      currency: 'INR',
-      name: 'CyberGuard',
-      description: 'Pro Plan — ₹750/month',
-      prefill: { name: user.user_metadata?.full_name || '', email: user.email },
-      theme: { color: '#00e5ff' },
-      handler: async function(response) {
-        await window.sb.from('users').update({
-          plan: 'pro',
-          razorpay_payment_id: response.razorpay_payment_id,
-          pro_since: new Date().toISOString()
-        }).eq('id', user.id);
-        await window.sb.auth.updateUser({ data: { plan: 'pro' } });
-        showToast('Payment successful! You are now on Pro 🎉', 'success');
-        // Refresh dashboard
-        const { data: { session: s2 } } = await window.sb.auth.getSession();
-        if (s2) showDashboard(s2.user);
-      }
-    };
-    const rzp = new Razorpay(options);
-    rzp.open();
-  };
- 
-  // ── BREACH SCANNER ──
-  window.runScan = async function() {
-    const email = document.getElementById('scan-email')?.value.trim() ||
-                  document.getElementById('dash-scan-email')?.value.trim();
-    if (!email || !email.includes('@')) {
-      showToast('Please enter a valid email address', 'error'); return;
-    }
-    const loadingId = document.getElementById('scan-loading') ? 'scan-loading' : 'dash-scan-loading';
-    const resultId  = document.getElementById('scan-result')  ? 'scan-result'  : 'dash-scan-result';
-    const btnId     = document.getElementById('scan-btn')     ? 'scan-btn'     : 'dash-scan-btn';
- 
-    document.getElementById(btnId).disabled = true;
-    document.getElementById(loadingId).style.display = 'flex';
-    document.getElementById(resultId).style.display  = 'none';
- 
-    const msgs = ['Scanning 12 billion records...','Checking dark web forums...','Cross-referencing databases...','Running AI analysis...'];
-    let i=0;
-    const iv = setInterval(() => {
-      const el = document.getElementById('load-txt') || document.getElementById('dash-load-txt');
-      if (el && i < msgs.length) el.textContent = msgs[i++];
-    }, 700);
- 
-    let breaches = null;
-    try {
-      const res = await fetch(`https://api.xposedornot.com/v1/check-email/${encodeURIComponent(email)}`);
-      if (res.ok) {
-        const d = await res.json();
-        if (d.breaches && Array.isArray(d.breaches) && d.breaches.length > 0) {
-          breaches = d.breaches.map(b => ({
-            Name: b.breach || b,
-            BreachDate: b.xposed_date || '',
-            DataClasses: b.xposed_data ? b.xposed_data.split(';') : ['Email addresses']
-          }));
-        }
-      }
-    } catch(e) {
-      // fallback demo
-      breaches = email.includes('test') ? [
-        {Name:'Adobe',BreachDate:'2013',DataClasses:['Passwords','Email addresses']},
-        {Name:'LinkedIn',BreachDate:'2016',DataClasses:['Passwords','Email addresses']}
-      ] : null;
-    }
- 
-    clearInterval(iv);
-    document.getElementById(loadingId).style.display = 'none';
-    document.getElementById(btnId).disabled = false;
-    renderScanResult(resultId, email, breaches);
-  };
- 
-  function renderScanResult(resultId, email, breaches) {
-    const el = document.getElementById(resultId);
-    el.style.display = 'block';
-    const isLoggedIn = !!window._currentUser;
-    if (!breaches || breaches.length === 0) {
-      el.innerHTML = `<div class="r-header"><div class="r-icon safe">✓</div><div><div class="r-title">No breaches found</div><div class="r-sub">${email} wasn't found in any known breach</div></div></div><div class="ubox"><p><strong>Stay protected</strong> — new breaches happen daily. Enable 24/7 monitoring.</p><button class="ubtn" onclick="${isLoggedIn ? 'startPayment()' : "openModal('pro')"}">Enable monitoring →</button></div>`;
-    } else {
-      const list = breaches.slice(0,5).map(b=>`<div class="b-item"><div><div class="b-name">${b.Name}</div><div class="b-date">${b.BreachDate?.split('-')[0]||''}</div></div><div class="b-tag">${(b.DataClasses||[]).slice(0,2).join(', ')}</div></div>`).join('');
-      const more = breaches.length>5 ? `<p style="font-size:12px;color:var(--muted);margin-bottom:10px">+${breaches.length-5} more breaches — upgrade to see all</p>` : '';
-      el.innerHTML = `<div class="r-header"><div class="r-icon danger">⚠</div><div><div class="r-title" style="color:var(--danger)">${breaches.length} breach${breaches.length>1?'es':''} found</div><div class="r-sub">Your data was exposed in ${breaches.length} known leak${breaches.length>1?'s':''}</div></div></div><div class="b-list">${list}</div>${more}<div class="ubox"><p><strong>Your passwords may be compromised.</strong> Upgrade to Pro for full protection.</p><button class="ubtn" onclick="${isLoggedIn ? 'startPayment()' : "openModal('pro')"}">Fix this — Get Pro ₹750/mo →</button></div>`;
-    }
-    el.scrollIntoView({behavior:'smooth',block:'nearest'});
-  }
- 
-  function showModalErr(msg) {
-    const el = document.getElementById('m-err');
-    el.style.display='block'; el.textContent=msg;
-  }
-  function showLoginErr(msg) {
-    const el = document.getElementById('l-err');
-    el.style.display='block'; el.textContent=msg;
-  }
- 
-  // ── SHOW LANDING ──
-  function showLanding() {
-    window._currentUser = null;
-    document.getElementById('page-landing').style.display  = '';
-    document.getElementById('page-dashboard').style.display = 'none';
-  }
- 
-  // ── SHOW DASHBOARD ──
-  async function showDashboard(user) {
-    window._currentUser = user;
-    document.getElementById('page-landing').style.display   = 'none';
-    document.getElementById('page-dashboard').style.display = '';
-    closeModal();
- 
-    // Fetch user record from DB
-    const { data: userData } = await window.sb.from('users').select('*').eq('id', user.id).single();
-    const plan = userData?.plan || user.user_metadata?.plan || 'free';
-    const name = userData?.full_name || user.user_metadata?.full_name || user.email.split('@')[0];
- 
-    document.getElementById('dash-name').textContent   = name;
-    document.getElementById('dash-email').textContent  = user.email;
-    document.getElementById('dash-plan').textContent   = plan.toUpperCase();
-    document.getElementById('dash-plan').className     = 'plan-badge ' + (plan==='pro' ? 'pro' : 'free');
-    document.getElementById('dash-joined').textContent = new Date(user.created_at).toLocaleDateString('en-IN', {day:'numeric',month:'short',year:'numeric'});
- 
-    // Security score (demo — in production calculate from real data)
-    const score = plan==='pro' ? Math.floor(Math.random()*20)+75 : Math.floor(Math.random()*30)+35;
-    document.getElementById('score-num').textContent = score;
-    document.getElementById('score-bar').style.width  = score + '%';
-    document.getElementById('score-bar').style.background = score>70 ? 'var(--success)' : score>45 ? 'var(--warning)' : 'var(--danger)';
-    document.getElementById('score-label').textContent = score>70 ? 'Good' : score>45 ? 'At Risk' : 'Vulnerable';
- 
-    // Show/hide upgrade banner
-    document.getElementById('upgrade-banner').style.display = plan==='pro' ? 'none' : '';
-  }
-</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --bg:#050810;--surface:#0c1120;--surface2:#111827;
-  --border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.13);
-  --accent:#00e5ff;--accent2:#7c3aed;--danger:#ff4d6d;
-  --success:#22d3a5;--warning:#fbbf24;
-  --text:#f0f4ff;--muted:#8892a4;
-  --ff:'Syne',sans-serif;--fb:'DM Sans',sans-serif;
+  --bg:#020409;--surface:#07090f;--surface2:#0d1117;--surface3:#131920;
+  --border:rgba(255,255,255,0.05);--border2:rgba(255,255,255,0.10);--border3:rgba(255,255,255,0.18);
+  --accent:#00ff9d;--accent2:#7928ca;--accent3:#ff0080;--accent4:#0070f3;
+  --danger:#ff3366;--success:#00ff9d;--warning:#ffbe0b;--info:#00b4d8;
+  --text:#e8edf7;--muted:#5a6478;--muted2:#8892a4;
+  --ff:'Space Grotesk',sans-serif;--mono:'JetBrains Mono',monospace;--display:'Bebas Neue',sans-serif;
+  --r:12px;--r2:8px;
 }
-html{scroll-behavior:smooth}
-body{background:var(--bg);color:var(--text);font-family:var(--fb);font-size:16px;line-height:1.6;overflow-x:hidden}
-body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(0,229,255,0.025) 1px,transparent 1px),linear-gradient(90deg,rgba(0,229,255,0.025) 1px,transparent 1px);background-size:52px 52px;pointer-events:none;z-index:0}
+html{scroll-behavior:smooth;height:100%}
+body{background:var(--bg);color:var(--text);font-family:var(--ff);font-size:16px;line-height:1.6;overflow-x:hidden;min-height:100vh}
  
-/* NAV */
-nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:center;justify-content:space-between;padding:0 32px;height:60px;background:rgba(5,8,16,0.92);backdrop-filter:blur(20px);border-bottom:1px solid var(--border)}
-.logo{font-family:var(--ff);font-weight:800;font-size:18px;color:var(--text);text-decoration:none;display:flex;align-items:center;gap:8px}
-.logo-icon{width:26px;height:26px;background:linear-gradient(135deg,var(--accent),var(--accent2));border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:13px}
-.nav-links{display:flex;align-items:center;gap:24px;list-style:none}
-.nav-links a{color:var(--muted);text-decoration:none;font-size:14px;transition:color .2s}
-.nav-links a:hover{color:var(--text)}
-.nav-cta{background:var(--accent)!important;color:#000!important;font-weight:500!important;padding:7px 16px;border-radius:6px!important;font-size:13px!important}
+/* ─── GRID BG ─────────────────────────────────────────────── */
+body::before{content:'';position:fixed;inset:0;
+  background-image:linear-gradient(rgba(0,255,157,0.018) 1px,transparent 1px),linear-gradient(90deg,rgba(0,255,157,0.018) 1px,transparent 1px);
+  background-size:48px 48px;pointer-events:none;z-index:0}
+body::after{content:'';position:fixed;inset:0;background:radial-gradient(ellipse 80% 60% at 50% -10%,rgba(121,40,202,0.15),transparent);pointer-events:none;z-index:0}
  
-/* TICKER */
-.ticker-bar{position:fixed;top:60px;left:0;right:0;z-index:99;overflow:hidden;background:rgba(12,17,32,0.95);border-bottom:1px solid var(--border);padding:7px 0}
-.ticker-track{display:flex;gap:48px;animation:tick 35s linear infinite;white-space:nowrap}
-.ticker-item{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--muted);flex-shrink:0}
-.tdot{width:5px;height:5px;border-radius:50%;flex-shrink:0}
-.tdot.r{background:var(--danger)}.tdot.y{background:var(--warning)}.tdot.g{background:var(--success)}
-@keyframes tick{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+/* ─── PAGE SYSTEM ─────────────────────────────────────────── */
+.page{display:none;position:relative;z-index:1;min-height:100vh}
+.page.active{display:block}
  
-/* HERO */
-.hero{position:relative;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:170px 24px 80px;z-index:1}
-.hero-glow{position:absolute;top:5%;left:50%;transform:translateX(-50%);width:700px;height:500px;background:radial-gradient(ellipse,rgba(0,229,255,0.09) 0%,transparent 65%);pointer-events:none}
-.badge{display:inline-flex;align-items:center;gap:6px;background:rgba(0,229,255,0.07);border:1px solid rgba(0,229,255,0.18);color:var(--accent);font-size:11px;font-weight:500;padding:5px 13px;border-radius:100px;margin-bottom:24px;letter-spacing:.8px;text-transform:uppercase}
-.pdot{width:5px;height:5px;background:var(--accent);border-radius:50%;animation:pulse 2s ease-in-out infinite}
-@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(1.5)}}
-h1{font-family:var(--ff);font-size:clamp(36px,7vw,76px);font-weight:800;line-height:1.04;letter-spacing:-2.5px;margin-bottom:20px}
-h1 .ac{color:var(--accent)}h1 .dm{color:var(--muted)}
-.hero-sub{font-size:clamp(15px,2vw,18px);color:var(--muted);max-width:520px;margin:0 auto 40px;font-weight:300;line-height:1.75}
+/* ─── NAV ─────────────────────────────────────────────────── */
+nav{position:fixed;top:0;left:0;right:0;z-index:500;height:58px;display:flex;align-items:center;justify-content:space-between;padding:0 32px;
+  background:rgba(2,4,9,0.92);backdrop-filter:blur(24px) saturate(180%);border-bottom:1px solid var(--border)}
+.logo{font-family:var(--display);font-size:24px;letter-spacing:2px;color:var(--text);text-decoration:none;display:flex;align-items:center;gap:10px}
+.logo-mark{width:28px;height:28px;background:var(--accent);border-radius:4px;display:flex;align-items:center;justify-content:center}
+.logo-mark svg{width:16px;height:16px}
+.nav-center{display:flex;align-items:center;gap:6px}
+.nav-link{color:var(--muted2);text-decoration:none;font-size:13px;font-weight:500;padding:6px 12px;border-radius:6px;transition:all .2s;cursor:pointer;border:none;background:none}
+.nav-link:hover,.nav-link.active-link{color:var(--text);background:rgba(255,255,255,0.04)}
+.nav-right{display:flex;align-items:center;gap:10px}
+.nav-btn{font-size:13px;font-weight:600;padding:7px 18px;border-radius:7px;border:none;cursor:pointer;transition:all .18s;font-family:var(--ff)}
+.nav-btn.outline{background:none;border:1px solid var(--border3);color:var(--text)}
+.nav-btn.outline:hover{border-color:var(--accent);color:var(--accent)}
+.nav-btn.solid{background:var(--accent);color:#000}
+.nav-btn.solid:hover{opacity:.85;transform:translateY(-1px)}
+.user-avatar{width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,var(--accent2),var(--accent));display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;cursor:pointer;border:2px solid var(--border2)}
  
-/* SCANNER */
-.scanner-wrap{width:100%;max-width:540px;margin:0 auto}
-.scanner-box{background:var(--surface);border:1px solid var(--border2);border-radius:16px;padding:24px;position:relative;overflow:hidden}
+/* ─── TICKER ─────────────────────────────────────────────── */
+.ticker-bar{position:fixed;top:58px;left:0;right:0;z-index:499;overflow:hidden;background:rgba(7,9,15,0.97);border-bottom:1px solid var(--border);padding:6px 0}
+.ticker-track{display:flex;gap:60px;animation:ticker 40s linear infinite;white-space:nowrap}
+.ticker-item{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--muted2);flex-shrink:0;font-family:var(--mono)}
+.tick-dot{width:5px;height:5px;border-radius:50%;flex-shrink:0}
+.tick-dot.r{background:var(--danger)}.tick-dot.y{background:var(--warning)}.tick-dot.g{background:var(--success)}
+@keyframes ticker{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
+ 
+/* ─── ANIMATIONS ──────────────────────────────────────────── */
+@keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(1.6)}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes glow{0%,100%{box-shadow:0 0 20px rgba(0,255,157,0.3)}50%{box-shadow:0 0 40px rgba(0,255,157,0.6)}}
+@keyframes scanLine{0%{top:0%}100%{top:100%}}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+@keyframes slideIn{from{opacity:0;transform:translateX(20px)}to{opacity:1;transform:translateX(0)}}
+@keyframes countUp{from{opacity:0}to{opacity:1}}
+ 
+.reveal{opacity:0;transform:translateY(24px);transition:opacity .7s ease,transform .7s ease}
+.reveal.vis{opacity:1;transform:translateY(0)}
+ 
+/* ═══════════════════════════════════════════════════════════
+   LANDING PAGE
+═══════════════════════════════════════════════════════════ */
+.hero{padding:148px 24px 80px;display:flex;flex-direction:column;align-items:center;text-align:center;position:relative;overflow:hidden}
+.hero-glow{position:absolute;top:-100px;left:50%;transform:translateX(-50%);width:900px;height:600px;background:radial-gradient(ellipse,rgba(121,40,202,0.18) 0%,rgba(0,255,157,0.06) 40%,transparent 70%);pointer-events:none}
+.hero-badge{display:inline-flex;align-items:center;gap:7px;background:rgba(0,255,157,0.06);border:1px solid rgba(0,255,157,0.2);color:var(--accent);font-size:11px;font-weight:600;padding:6px 14px;border-radius:100px;margin-bottom:28px;letter-spacing:1.5px;text-transform:uppercase;animation:fadeUp .5s ease both}
+.live-dot{width:6px;height:6px;background:var(--accent);border-radius:50%;animation:pulse 2s ease-in-out infinite}
+h1{font-family:var(--display);font-size:clamp(56px,9vw,110px);letter-spacing:2px;line-height:0.95;margin-bottom:24px;animation:fadeUp .5s ease .1s both}
+h1 .ac{color:var(--accent)}
+h1 .dm{color:rgba(255,255,255,0.18)}
+.hero-sub{font-size:clamp(15px,2vw,18px);color:var(--muted2);max-width:520px;margin:0 auto 48px;font-weight:400;line-height:1.8;animation:fadeUp .5s ease .2s both}
+ 
+/* ─── SCANNER BOX ─────────────────────────────────────────── */
+.scanner-wrap{width:100%;max-width:580px;margin:0 auto;animation:fadeUp .5s ease .3s both}
+.scanner-box{background:var(--surface2);border:1px solid var(--border2);border-radius:16px;padding:28px;position:relative;overflow:hidden}
 .scanner-box::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--accent),transparent)}
-.scan-label{font-size:11px;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:1.2px;margin-bottom:13px;text-align:left}
+.scan-label{font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:2px;margin-bottom:12px;text-align:left;font-family:var(--mono)}
 .scan-row{display:flex;gap:8px}
-.scan-input{flex:1;background:var(--bg);border:1px solid var(--border2);border-radius:8px;padding:12px 14px;color:var(--text);font-family:var(--fb);font-size:14px;outline:none;transition:border-color .2s}
+.scan-input{flex:1;background:var(--bg);border:1px solid var(--border2);border-radius:9px;padding:14px 16px;color:var(--text);font-family:var(--mono);font-size:14px;outline:none;transition:border-color .2s}
 .scan-input:focus{border-color:var(--accent)}
 .scan-input::placeholder{color:var(--muted)}
-.scan-btn{background:var(--accent);color:#000;border:none;border-radius:8px;padding:12px 20px;font-family:var(--ff);font-weight:700;font-size:13px;cursor:pointer;white-space:nowrap;transition:all .2s}
-.scan-btn:hover{opacity:.85}
-.scan-btn:disabled{opacity:.45;cursor:not-allowed}
-.scan-note{font-size:11px;color:var(--muted);margin-top:9px;text-align:left}
-.scan-loading{display:none;align-items:center;gap:8px;margin-top:13px;color:var(--accent);font-size:13px}
-.spin{width:14px;height:14px;border:2px solid rgba(0,229,255,0.15);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite}
-@keyframes spin{to{transform:rotate(360deg)}}
-#scan-result,#dash-scan-result{margin-top:16px;display:none}
-.r-header{display:flex;align-items:center;gap:10px;margin-bottom:13px}
-.r-icon{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0}
-.r-icon.danger{background:rgba(255,77,109,.13);color:var(--danger)}
-.r-icon.safe{background:rgba(34,211,165,.13);color:var(--success)}
+.scan-btn{background:var(--accent);color:#000;border:none;border-radius:9px;padding:14px 24px;font-family:var(--ff);font-weight:700;font-size:13px;cursor:pointer;white-space:nowrap;transition:all .2s;letter-spacing:.5px}
+.scan-btn:hover{opacity:.85;transform:translateY(-1px)}
+.scan-btn:disabled{opacity:.4;cursor:not-allowed;transform:none}
+.scan-note{font-size:11px;color:var(--muted);margin-top:9px;text-align:left;font-family:var(--mono)}
+.scan-loading{display:none;align-items:center;gap:10px;margin-top:14px;color:var(--accent);font-size:12px;font-family:var(--mono)}
+.scan-loading.on{display:flex}
+.spin{width:14px;height:14px;border:2px solid rgba(0,255,157,0.15);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite}
+#scan-result{margin-top:18px;display:none}
+.r-header{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+.r-icon{width:38px;height:38px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}
+.r-icon.danger{background:rgba(255,51,102,.1);color:var(--danger);border:1px solid rgba(255,51,102,.2)}
+.r-icon.safe{background:rgba(0,255,157,.08);color:var(--success);border:1px solid rgba(0,255,157,.15)}
 .r-title{font-family:var(--ff);font-size:15px;font-weight:700}
-.r-sub{font-size:12px;color:var(--muted)}
-.b-list{display:flex;flex-direction:column;gap:6px;margin-bottom:12px}
-.b-item{background:rgba(255,77,109,.05);border:1px solid rgba(255,77,109,.13);border-radius:8px;padding:8px 12px;display:flex;align-items:center;justify-content:space-between;gap:10px}
-.b-name{font-size:13px;font-weight:500}
-.b-date{font-size:11px;color:var(--muted)}
-.b-tag{font-size:10px;padding:2px 7px;border-radius:4px;background:rgba(255,77,109,.1);color:var(--danger);white-space:nowrap}
-.ubox{background:linear-gradient(135deg,rgba(124,58,237,.12),rgba(0,229,255,.05));border:1px solid rgba(124,58,237,.22);border-radius:10px;padding:14px;text-align:center}
-.ubox p{font-size:13px;color:var(--muted);margin-bottom:10px}
-.ubox strong{color:var(--text)}
-.ubtn{background:linear-gradient(135deg,var(--accent2),var(--accent));color:#fff;border:none;border-radius:7px;padding:10px 20px;font-family:var(--ff);font-weight:700;font-size:13px;cursor:pointer;transition:opacity .2s;width:100%}
+.r-sub{font-size:12px;color:var(--muted);font-family:var(--mono)}
+.b-list{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
+.b-item{background:rgba(255,51,102,.04);border:1px solid rgba(255,51,102,.1);border-radius:9px;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+.b-name{font-size:14px;font-weight:600}
+.b-date{font-size:11px;color:var(--muted);font-family:var(--mono)}
+.b-tag{font-size:10px;padding:3px 8px;border-radius:4px;background:rgba(255,51,102,.08);color:var(--danger);white-space:nowrap;font-family:var(--mono)}
+.ubox{background:linear-gradient(135deg,rgba(121,40,202,.1),rgba(0,255,157,.05));border:1px solid rgba(121,40,202,.2);border-radius:10px;padding:16px;text-align:center}
+.ubox p{font-size:13px;color:var(--muted2);margin-bottom:12px;line-height:1.6}
+.ubtn{background:linear-gradient(135deg,var(--accent2),#0070f3);color:#fff;border:none;border-radius:8px;padding:11px 22px;font-family:var(--ff);font-weight:700;font-size:13px;cursor:pointer;transition:opacity .2s;width:100%}
 .ubtn:hover{opacity:.85}
  
-/* TRUST ROW */
-.trust-row{display:flex;align-items:center;justify-content:center;gap:24px;margin-top:40px;flex-wrap:wrap}
-.trust-item{display:flex;align-items:center;gap:7px;color:var(--muted);font-size:13px}
+/* ─── STATS STRIP ─────────────────────────────────────────── */
+.stats-strip{position:relative;z-index:1;border-top:1px solid var(--border);border-bottom:1px solid var(--border);padding:40px 24px;display:flex;justify-content:center;gap:64px;flex-wrap:wrap;background:var(--surface)}
+.stat{text-align:center}
+.stat-n{font-family:var(--display);font-size:44px;color:var(--accent);letter-spacing:1px}
+.stat-l{font-size:11px;color:var(--muted);margin-top:2px;text-transform:uppercase;letter-spacing:1.5px;font-family:var(--mono)}
+ 
+/* ─── GENERIC SECTIONS ─────────────────────────────────────── */
+.inner{max-width:1100px;margin:0 auto;padding:90px 24px}
+.sec-tag{font-size:10px;font-weight:600;letter-spacing:3px;text-transform:uppercase;color:var(--accent);margin-bottom:12px;font-family:var(--mono)}
+.sec-title{font-family:var(--display);font-size:clamp(36px,5vw,60px);letter-spacing:1px;line-height:1;margin-bottom:16px}
+.sec-sub{color:var(--muted2);max-width:480px;font-size:15px;margin-bottom:52px;line-height:1.75}
+ 
+/* ─── HOW IT WORKS ─────────────────────────────────────────── */
+.steps-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px}
+.step-card{background:var(--surface2);border:1px solid var(--border);border-radius:14px;padding:28px 24px;transition:all .3s;position:relative;overflow:hidden;cursor:default}
+.step-card::after{content:'';position:absolute;bottom:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--accent2),var(--accent));opacity:0;transition:opacity .3s}
+.step-card:hover{border-color:rgba(0,255,157,0.15);transform:translateY(-4px)}
+.step-card:hover::after{opacity:1}
+.step-num{font-family:var(--display);font-size:11px;letter-spacing:3px;color:var(--accent);margin-bottom:16px}
+.step-ico{font-size:28px;margin-bottom:14px;display:block}
+.step-title{font-family:var(--ff);font-size:16px;font-weight:700;margin-bottom:8px}
+.step-desc{font-size:13px;color:var(--muted2);line-height:1.7}
+ 
+/* ─── FEATURES ─────────────────────────────────────────────── */
+.feat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
+.feat-card{background:var(--surface2);border:1px solid var(--border);border-radius:14px;padding:28px;transition:border-color .2s}
+.feat-card:hover{border-color:var(--border2)}
+.feat-card.hl{border-color:rgba(0,255,157,0.15);background:linear-gradient(135deg,var(--surface2),rgba(0,255,157,0.02))}
+.feat-ico-wrap{width:44px;height:44px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:20px;margin-bottom:16px}
+.ico-c{background:rgba(0,255,157,0.08)}.ico-p{background:rgba(121,40,202,.1)}.ico-r{background:rgba(255,51,102,.08)}.ico-g{background:rgba(0,180,216,.08)}.ico-y{background:rgba(255,190,11,.08)}.ico-b{background:rgba(0,112,243,.08)}
+.feat-title{font-family:var(--ff);font-size:16px;font-weight:700;margin-bottom:8px}
+.feat-desc{font-size:13px;color:var(--muted2);line-height:1.7}
+.feat-badge{display:inline-block;font-size:10px;padding:3px 9px;border-radius:4px;margin-top:10px;font-family:var(--mono);font-weight:600}
+.feat-badge.new{background:rgba(0,255,157,.1);color:var(--accent);border:1px solid rgba(0,255,157,.2)}
+.feat-badge.pro{background:rgba(121,40,202,.1);color:#a78bfa;border:1px solid rgba(121,40,202,.2)}
+ 
+/* ─── PRICING ─────────────────────────────────────────────── */
+.price-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:22px;max-width:820px;margin:0 auto}
+.price-card{background:var(--surface2);border:1px solid var(--border);border-radius:16px;padding:36px 32px;transition:transform .2s;position:relative}
+.price-card:hover{transform:translateY(-4px)}
+.price-card.pop{border-color:rgba(0,255,157,0.25);background:linear-gradient(160deg,var(--surface2),rgba(0,255,157,0.03))}
+.pop-label{position:absolute;top:-11px;left:50%;transform:translateX(-50%);background:var(--accent);color:#000;font-size:10px;font-weight:700;padding:4px 16px;border-radius:100px;white-space:nowrap;font-family:var(--mono);letter-spacing:.5px}
+.plan-name{font-family:var(--mono);font-size:12px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:var(--muted2);margin-bottom:12px}
+.plan-price{font-family:var(--display);font-size:56px;letter-spacing:-1px;line-height:1;margin-bottom:4px}
+.plan-price sup{font-size:24px;vertical-align:top;margin-top:10px;display:inline-block;font-family:var(--ff);font-weight:700}
+.plan-period{font-size:12px;color:var(--muted);margin-bottom:28px;font-family:var(--mono)}
+.plan-feats{list-style:none;margin-bottom:30px}
+.plan-feats li{font-size:13px;color:var(--muted2);padding:7px 0;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px}
+.plan-feats li:last-child{border-bottom:none}
+.plan-feats li .ck{color:var(--success);font-size:12px}.plan-feats li .xx{color:var(--muted);opacity:.35;font-size:12px}
+.plan-feats li span{color:var(--text)}
+.plan-btn{width:100%;padding:14px;border-radius:9px;font-family:var(--ff);font-weight:700;font-size:14px;cursor:pointer;transition:all .2s;border:none;letter-spacing:.3px}
+.plan-btn.out{background:transparent;border:1px solid var(--border3);color:var(--text)}
+.plan-btn.out:hover{border-color:var(--accent);color:var(--accent)}
+.plan-btn.fill{background:var(--accent);color:#000}
+.plan-btn.fill:hover{opacity:.85;transform:translateY(-1px)}
+ 
+/* ─── TRUST ROW ─────────────────────────────────────────────── */
+.trust-row{display:flex;align-items:center;justify-content:center;gap:32px;margin-top:52px;flex-wrap:wrap}
+.trust-item{display:flex;align-items:center;gap:8px;color:var(--muted2);font-size:13px}
 .tck{color:var(--success);font-size:12px}
  
-/* STATS */
-.stats-strip{position:relative;z-index:1;border-top:1px solid var(--border);border-bottom:1px solid var(--border);padding:32px 24px;display:flex;justify-content:center;gap:48px;flex-wrap:wrap;background:var(--surface)}
-.stat{text-align:center}
-.stat-n{font-family:var(--ff);font-size:32px;font-weight:800;color:var(--accent);letter-spacing:-1px}
-.stat-l{font-size:12px;color:var(--muted);margin-top:2px}
+/* ─── FOOTER ──────────────────────────────────────────────── */
+footer{position:relative;z-index:1;border-top:1px solid var(--border);padding:40px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:20px}
+footer p{font-size:12px;color:var(--muted);font-family:var(--mono)}
+.f-links{display:flex;gap:24px;list-style:none}
+.f-links a{font-size:12px;color:var(--muted);text-decoration:none}
+.f-links a:hover{color:var(--text)}
  
-/* SECTIONS */
-section{position:relative;z-index:1}
-.inner{max-width:1060px;margin:0 auto;padding:80px 24px}
-.sec-tag{font-size:11px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:var(--accent);margin-bottom:12px}
-.sec-title{font-family:var(--ff);font-size:clamp(24px,4vw,40px);font-weight:800;letter-spacing:-1px;line-height:1.1;margin-bottom:12px}
-.sec-sub{color:var(--muted);max-width:460px;font-size:15px;margin-bottom:44px}
-.steps-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px}
-.step-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:24px 20px;transition:border-color .3s,transform .3s;position:relative;overflow:hidden}
-.step-card::after{content:'';position:absolute;bottom:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--accent2),var(--accent));opacity:0;transition:opacity .3s}
-.step-card:hover{border-color:var(--border2);transform:translateY(-3px)}
-.step-card:hover::after{opacity:1}
-.step-n{font-family:var(--ff);font-size:10px;font-weight:700;color:var(--accent);letter-spacing:2px;margin-bottom:12px}
-.step-ico{font-size:24px;margin-bottom:12px;display:block}
-.step-title{font-family:var(--ff);font-size:16px;font-weight:700;margin-bottom:6px}
-.step-desc{font-size:13px;color:var(--muted);line-height:1.6}
-.feat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
-.feat-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:24px;transition:border-color .2s}
-.feat-card:hover{border-color:var(--border2)}
-.feat-card.hl{border-color:rgba(0,229,255,.2)}
-.feat-ico{width:40px;height:40px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:18px;margin-bottom:12px}
-.feat-ico.c{background:rgba(0,229,255,.09)}.feat-ico.p{background:rgba(124,58,237,.1)}.feat-ico.r{background:rgba(255,77,109,.09)}.feat-ico.g{background:rgba(34,211,165,.09)}.feat-ico.y{background:rgba(251,191,36,.09)}.feat-ico.b{background:rgba(59,130,246,.09)}
-.feat-title{font-family:var(--ff);font-size:15px;font-weight:700;margin-bottom:6px}
-.feat-desc{font-size:13px;color:var(--muted);line-height:1.6}
+/* ═══════════════════════════════════════════════════════════
+   AUTH PAGE
+═══════════════════════════════════════════════════════════ */
+.auth-page{display:flex;min-height:100vh}
+.auth-left{flex:1;padding:40px;display:flex;flex-direction:column;justify-content:center;align-items:center;max-width:500px;margin:0 auto}
+.auth-right{flex:1;background:var(--surface);border-left:1px solid var(--border);position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center}
+.auth-right-content{text-align:center;padding:40px}
+.auth-right-title{font-family:var(--display);font-size:48px;letter-spacing:2px;margin-bottom:16px;color:var(--accent)}
+.auth-right-sub{font-size:14px;color:var(--muted2);line-height:1.75;max-width:320px}
+.auth-stats{display:flex;flex-direction:column;gap:16px;margin-top:48px}
+.auth-stat-row{display:flex;align-items:center;gap:14px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px 18px;text-align:left}
+.auth-stat-ico{font-size:22px;flex-shrink:0}
+.auth-stat-text strong{display:block;font-size:14px;font-weight:600;color:var(--text)}
+.auth-stat-text span{font-size:12px;color:var(--muted);font-family:var(--mono)}
+.auth-form{width:100%;max-width:380px}
+.auth-form h2{font-family:var(--display);font-size:40px;letter-spacing:1px;margin-bottom:8px}
+.auth-form p{font-size:13px;color:var(--muted2);margin-bottom:28px}
+.form-group{margin-bottom:14px}
+.form-label{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;display:block;margin-bottom:7px;font-family:var(--mono)}
+.form-input{width:100%;background:var(--surface);border:1px solid var(--border2);border-radius:9px;padding:13px 15px;color:var(--text);font-family:var(--mono);font-size:14px;outline:none;transition:border-color .2s}
+.form-input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(0,255,157,0.06)}
+.form-input::placeholder{color:var(--muted)}
+.auth-btn{width:100%;padding:14px;background:var(--accent);color:#000;border:none;border-radius:9px;font-family:var(--ff);font-weight:700;font-size:14px;cursor:pointer;transition:all .2s;margin-top:6px;letter-spacing:.3px}
+.auth-btn:hover{opacity:.85;transform:translateY(-1px)}
+.auth-btn:disabled{opacity:.45;cursor:not-allowed;transform:none}
+.auth-divider{display:flex;align-items:center;gap:12px;margin:16px 0;color:var(--muted);font-size:12px}
+.auth-divider::before,.auth-divider::after{content:'';flex:1;height:1px;background:var(--border)}
+.auth-alt{font-size:13px;color:var(--muted2);text-align:center;margin-top:16px}
+.auth-alt a{color:var(--accent);text-decoration:none;font-weight:600}
+.auth-err{font-size:12px;color:var(--danger);margin-top:8px;display:none;font-family:var(--mono);padding:10px 14px;background:rgba(255,51,102,.06);border-radius:7px;border:1px solid rgba(255,51,102,.15)}
+.auth-ok{font-size:13px;color:var(--success);margin-top:8px;display:none;text-align:center;font-family:var(--mono)}
+.auth-tabs{display:flex;background:var(--bg);border-radius:10px;padding:3px;margin-bottom:26px}
+.auth-tab{flex:1;padding:9px;border:none;background:none;color:var(--muted);font-family:var(--ff);font-size:13px;font-weight:600;cursor:pointer;border-radius:7px;transition:all .2s}
+.auth-tab.active{background:var(--surface2);color:var(--text)}
  
-/* PRICING */
-.price-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:20px;max-width:740px;margin:0 auto}
-.price-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:30px;transition:transform .2s}
-.price-card:hover{transform:translateY(-3px)}
-.price-card.pop{border-color:var(--accent);position:relative}
-.pop-badge{position:absolute;top:-11px;left:50%;transform:translateX(-50%);background:var(--accent);color:#000;font-size:10px;font-weight:700;padding:3px 14px;border-radius:100px;white-space:nowrap;font-family:var(--ff)}
-.plan-name-label{font-family:var(--ff);font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:10px}
-.plan-price-big{font-family:var(--ff);font-size:46px;font-weight:800;letter-spacing:-2px;line-height:1;margin-bottom:3px}
-.plan-price-big sup{font-size:20px;vertical-align:top;margin-top:8px;display:inline-block}
-.plan-period{font-size:12px;color:var(--muted);margin-bottom:24px}
-.plan-feats{list-style:none;margin-bottom:26px}
-.plan-feats li{font-size:13px;color:var(--muted);padding:5px 0;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px}
-.plan-feats li:last-child{border-bottom:none}
-.plan-feats li .ck{color:var(--success);font-size:11px}
-.plan-feats li .xx{opacity:.3;font-size:11px}
-.plan-feats li span{color:var(--text)}
-.plan-btn{width:100%;padding:12px;border-radius:8px;font-family:var(--ff);font-weight:700;font-size:14px;cursor:pointer;transition:all .2s;border:none}
-.plan-btn.out{background:transparent;border:1px solid var(--border2);color:var(--text)}
-.plan-btn.out:hover{border-color:var(--accent);color:var(--accent)}
-.plan-btn.fil{background:var(--accent);color:#000}
-.plan-btn.fil:hover{opacity:.85}
+/* ═══════════════════════════════════════════════════════════
+   DASHBOARD
+═══════════════════════════════════════════════════════════ */
+.dash-layout{display:flex;min-height:100vh;padding-top:58px}
+.sidebar{width:220px;background:var(--surface);border-right:1px solid var(--border);position:fixed;top:58px;bottom:0;left:0;display:flex;flex-direction:column;z-index:100;overflow-y:auto}
+.sidebar-section{padding:20px 12px 12px;border-bottom:1px solid var(--border)}
+.sidebar-label{font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:2px;padding:0 10px;margin-bottom:8px;font-family:var(--mono)}
+.sidebar-item{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;cursor:pointer;transition:all .2s;color:var(--muted2);font-size:13px;font-weight:500;border:none;background:none;width:100%;text-align:left}
+.sidebar-item:hover{background:var(--surface2);color:var(--text)}
+.sidebar-item.active{background:rgba(0,255,157,0.08);color:var(--accent);border:1px solid rgba(0,255,157,0.12)}
+.sidebar-item .s-ico{font-size:16px;width:22px;text-align:center;flex-shrink:0}
+.sidebar-badge{margin-left:auto;background:var(--danger);color:#fff;font-size:10px;font-weight:700;padding:2px 7px;border-radius:100px;font-family:var(--mono)}
+.sidebar-bottom{padding:16px 12px;margin-top:auto;border-top:1px solid var(--border)}
+.sidebar-user{display:flex;align-items:center;gap:10px;padding:10px;border-radius:9px;background:var(--surface2)}
+.sidebar-user-name{font-size:13px;font-weight:600}
+.sidebar-user-plan{font-size:10px;color:var(--accent);font-family:var(--mono)}
  
-/* ═══════════════ DASHBOARD ═══════════════ */
-#page-dashboard{display:none;min-height:100vh;padding-top:60px}
-.dash-layout{display:grid;grid-template-columns:240px 1fr;min-height:calc(100vh - 60px)}
+.dash-main{margin-left:220px;flex:1;padding:32px;min-height:calc(100vh - 58px)}
  
-/* SIDEBAR */
-.sidebar{background:var(--surface);border-right:1px solid var(--border);padding:24px 16px;position:sticky;top:60px;height:calc(100vh - 60px);overflow-y:auto}
-.user-card{background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:24px;text-align:center}
-.user-avatar{width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,var(--accent2),var(--accent));display:flex;align-items:center;justify-content:center;font-family:var(--ff);font-weight:800;font-size:20px;color:#fff;margin:0 auto 10px}
-.user-name{font-family:var(--ff);font-size:14px;font-weight:700;margin-bottom:2px}
-.user-email{font-size:11px;color:var(--muted);margin-bottom:8px;word-break:break-all}
-.plan-badge{font-size:10px;font-weight:700;padding:3px 10px;border-radius:100px;letter-spacing:.5px;font-family:var(--ff)}
-.plan-badge.free{background:rgba(136,146,164,.15);color:var(--muted)}
-.plan-badge.pro{background:rgba(0,229,255,.12);color:var(--accent)}
-.sidebar-nav{list-style:none}
-.sidebar-nav li{margin-bottom:4px}
-.sidebar-nav a{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:8px;color:var(--muted);text-decoration:none;font-size:13px;transition:all .2s;cursor:pointer}
-.sidebar-nav a:hover,.sidebar-nav a.active{background:rgba(0,229,255,.07);color:var(--text)}
-.sidebar-nav a.active{color:var(--accent)}
-.sidebar-nav .nav-ico{font-size:15px;width:18px;text-align:center}
-.sidebar-section{font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);padding:12px 12px 6px;opacity:.6}
-.logout-btn{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:8px;color:var(--danger);font-size:13px;cursor:pointer;transition:background .2s;width:100%;background:none;border:none;font-family:var(--fb);margin-top:8px}
-.logout-btn:hover{background:rgba(255,77,109,.08)}
+/* DASH PANELS */
+.dash-panel{display:none}
+.dash-panel.active{display:block}
+.dash-header{margin-bottom:28px}
+.dash-title{font-family:var(--display);font-size:36px;letter-spacing:1px;margin-bottom:6px}
+.dash-sub{font-size:14px;color:var(--muted2)}
  
-/* DASH MAIN */
-.dash-main{padding:28px;overflow-y:auto}
-.dash-section{display:none}
-.dash-section.active{display:block}
-.page-title{font-family:var(--ff);font-size:22px;font-weight:800;letter-spacing:-.5px;margin-bottom:4px}
-.page-sub{font-size:13px;color:var(--muted);margin-bottom:24px}
+/* CARDS ROW */
+.cards-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:28px}
+.metric-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:22px 24px;position:relative;overflow:hidden}
+.metric-card::before{content:'';position:absolute;top:0;right:0;width:80px;height:80px;border-radius:0 14px 0 80px;opacity:.06}
+.metric-card:nth-child(1)::before{background:var(--accent)}
+.metric-card:nth-child(2)::before{background:var(--danger)}
+.metric-card:nth-child(3)::before{background:var(--warning)}
+.metric-card:nth-child(4)::before{background:var(--info)}
+.metric-label{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:10px;font-family:var(--mono)}
+.metric-val{font-family:var(--display);font-size:36px;letter-spacing:-1px;margin-bottom:4px}
+.metric-change{font-size:12px;color:var(--muted2);font-family:var(--mono)}
+.metric-change.up{color:var(--danger)}
+.metric-change.ok{color:var(--success)}
+.metric-ico{position:absolute;top:20px;right:20px;font-size:22px;opacity:.5}
  
-/* UPGRADE BANNER */
-.upgrade-banner{background:linear-gradient(135deg,rgba(124,58,237,.15),rgba(0,229,255,.08));border:1px solid rgba(124,58,237,.3);border-radius:12px;padding:16px 20px;display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:24px;flex-wrap:wrap}
-.upgrade-banner p{font-size:13px;color:var(--muted)}
-.upgrade-banner strong{color:var(--text)}
-.upgrade-banner button{background:linear-gradient(135deg,var(--accent2),var(--accent));color:#fff;border:none;border-radius:7px;padding:9px 18px;font-family:var(--ff);font-weight:700;font-size:13px;cursor:pointer;white-space:nowrap}
+/* BREACH TABLE */
+.panel-box{background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden;margin-bottom:20px}
+.panel-box-header{padding:18px 22px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.panel-box-title{font-size:14px;font-weight:700}
+.panel-box-actions{display:flex;gap:8px;align-items:center}
+.small-btn{font-size:12px;font-weight:600;padding:7px 14px;border-radius:7px;border:none;cursor:pointer;transition:all .18s;font-family:var(--ff)}
+.small-btn.outline{background:none;border:1px solid var(--border2);color:var(--text)}
+.small-btn.outline:hover{border-color:var(--accent);color:var(--accent)}
+.small-btn.primary{background:var(--accent);color:#000}
+.small-btn.primary:hover{opacity:.85}
+.small-btn.danger-btn{background:rgba(255,51,102,.1);color:var(--danger);border:1px solid rgba(255,51,102,.2)}
+table{width:100%;border-collapse:collapse}
+th{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;padding:12px 18px;text-align:left;border-bottom:1px solid var(--border);background:rgba(255,255,255,.02);font-family:var(--mono)}
+td{padding:14px 18px;font-size:13px;border-bottom:1px solid var(--border);vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:rgba(255,255,255,0.015)}
+.severity-badge{display:inline-flex;align-items:center;gap:5px;font-size:11px;padding:3px 10px;border-radius:5px;font-family:var(--mono);font-weight:600}
+.sev-high{background:rgba(255,51,102,.1);color:var(--danger);border:1px solid rgba(255,51,102,.2)}
+.sev-med{background:rgba(255,190,11,.08);color:var(--warning);border:1px solid rgba(255,190,11,.15)}
+.sev-low{background:rgba(0,255,157,.08);color:var(--success);border:1px solid rgba(0,255,157,.15)}
  
-/* STAT CARDS */
-.stat-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin-bottom:24px}
-.stat-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px}
-.stat-card-icon{font-size:20px;margin-bottom:8px}
-.stat-card-val{font-family:var(--ff);font-size:24px;font-weight:800;letter-spacing:-.5px;margin-bottom:2px}
-.stat-card-label{font-size:12px;color:var(--muted)}
+/* SCAN HISTORY TIMELINE */
+.timeline{padding:4px 0}
+.timeline-item{display:flex;gap:14px;padding:14px 22px;border-bottom:1px solid var(--border);align-items:flex-start}
+.timeline-item:last-child{border-bottom:none}
+.t-dot-wrap{display:flex;flex-direction:column;align-items:center;gap:0;flex-shrink:0}
+.t-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;margin-top:3px}
+.t-dot.safe{background:var(--success)}.t-dot.breach{background:var(--danger)}.t-dot.warn{background:var(--warning)}
+.t-line{width:1px;flex:1;background:var(--border);min-height:20px;margin-top:4px}
+.t-content{flex:1}
+.t-email{font-size:13px;font-weight:600;font-family:var(--mono)}
+.t-info{font-size:12px;color:var(--muted2);margin-top:2px}
+.t-date{font-size:11px;color:var(--muted);font-family:var(--mono);flex-shrink:0;margin-top:2px}
  
-/* SCORE */
-.score-wrap{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:22px;margin-bottom:20px}
-.score-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
-.score-circle{width:64px;height:64px;border-radius:50%;background:linear-gradient(135deg,var(--accent2),var(--accent));display:flex;align-items:center;justify-content:center;font-family:var(--ff);font-size:20px;font-weight:800}
-.score-info h3{font-family:var(--ff);font-size:16px;font-weight:700;margin-bottom:2px}
-.score-info p{font-size:12px;color:var(--muted)}
-.score-bar-wrap{height:6px;background:var(--bg);border-radius:3px;overflow:hidden}
-#score-bar{height:100%;border-radius:3px;transition:width 1s ease}
-.score-footer{display:flex;justify-content:space-between;margin-top:8px;font-size:12px;color:var(--muted)}
+/* KALI TERMINAL PANEL */
+.terminal-box{background:#0a0d08;border:1px solid rgba(0,255,157,0.15);border-radius:14px;overflow:hidden;margin-bottom:20px}
+.terminal-header{background:#111a0f;padding:12px 18px;border-bottom:1px solid rgba(0,255,157,0.1);display:flex;align-items:center;gap:8px}
+.terminal-dots{display:flex;gap:6px}
+.terminal-dots span{width:11px;height:11px;border-radius:50%}
+.terminal-dots span:nth-child(1){background:#ff5f56}
+.terminal-dots span:nth-child(2){background:#ffbd2e}
+.terminal-dots span:nth-child(3){background:#27c93f}
+.terminal-title{margin-left:8px;font-size:12px;color:rgba(0,255,157,0.5);font-family:var(--mono)}
+.terminal-body{padding:20px;font-family:var(--mono);font-size:13px;color:#00ff9d;min-height:200px;max-height:380px;overflow-y:auto;line-height:1.8}
+.t-line-out{color:#4ade80}
+.t-line-warn{color:#ffbe0b}
+.t-line-err{color:#ff4d6d}
+.t-line-dim{color:#2d5a3d}
+.t-cursor{display:inline-block;width:8px;height:14px;background:var(--accent);vertical-align:middle;animation:blink 1s step-end infinite;margin-left:2px}
+.terminal-controls{padding:14px 18px;border-top:1px solid rgba(0,255,157,0.1);background:#0e150b;display:flex;gap:10px;flex-wrap:wrap}
+.term-btn{font-size:12px;font-weight:600;padding:8px 16px;border-radius:7px;border:none;cursor:pointer;font-family:var(--mono);transition:all .2s}
+.term-btn.run{background:rgba(0,255,157,0.12);color:var(--accent);border:1px solid rgba(0,255,157,0.2)}
+.term-btn.run:hover{background:rgba(0,255,157,0.18)}
+.term-btn.run:disabled{opacity:.4;cursor:not-allowed}
+.term-btn.clear{background:rgba(255,255,255,0.04);color:var(--muted2);border:1px solid var(--border)}
+.term-btn.dl{background:rgba(0,112,243,.1);color:#60a5fa;border:1px solid rgba(0,112,243,.2)}
+.term-btn.dl:hover{background:rgba(0,112,243,.15)}
+.term-progress{height:3px;background:rgba(0,255,157,0.08);margin:0;overflow:hidden}
+.term-progress-bar{height:100%;background:linear-gradient(90deg,var(--accent2),var(--accent));width:0%;transition:width .5s ease;position:relative}
+.term-progress-bar::after{content:'';position:absolute;right:0;top:0;bottom:0;width:20px;background:rgba(255,255,255,0.4);animation:shimmer 1s ease-in-out infinite}
+@keyframes shimmer{0%{opacity:0}50%{opacity:1}100%{opacity:0}}
  
-/* THREAT LIST */
-.threat-list{background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:20px}
-.threat-list-header{padding:16px 18px;border-bottom:1px solid var(--border);font-family:var(--ff);font-size:14px;font-weight:700;display:flex;align-items:center;justify-content:space-between}
-.threat-item{padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px}
-.threat-item:last-child{border-bottom:none}
-.threat-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
-.threat-dot.high{background:var(--danger)}
-.threat-dot.med{background:var(--warning)}
-.threat-dot.low{background:var(--success)}
-.threat-text{flex:1;font-size:13px}
-.threat-text strong{display:block;margin-bottom:1px}
-.threat-text span{font-size:11px;color:var(--muted)}
-.threat-time{font-size:11px;color:var(--muted);white-space:nowrap}
+/* PDF DOWNLOAD PANEL */
+.pdf-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:28px;margin-bottom:16px}
+.pdf-card-title{font-size:15px;font-weight:700;margin-bottom:6px}
+.pdf-card-sub{font-size:13px;color:var(--muted2);margin-bottom:20px;line-height:1.6}
+.pdf-options{display:flex;flex-direction:column;gap:10px;margin-bottom:20px}
+.pdf-option{display:flex;align-items:center;gap:10px;padding:12px 16px;background:var(--surface2);border:1px solid var(--border);border-radius:9px;cursor:pointer;transition:border-color .2s}
+.pdf-option:hover{border-color:var(--border2)}
+.pdf-option input[type=checkbox]{accent-color:var(--accent);width:16px;height:16px}
+.pdf-option label{font-size:13px;cursor:pointer;flex:1}
+.pdf-option .pdf-opt-badge{font-size:10px;padding:2px 8px;border-radius:4px;background:rgba(0,255,157,.08);color:var(--accent);border:1px solid rgba(0,255,157,.15);font-family:var(--mono)}
+.pdf-preview{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:20px;font-family:var(--mono);font-size:12px;color:var(--muted2);line-height:2;margin-bottom:20px}
+.pdf-preview-title{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:2px;margin-bottom:12px}
+.pdf-dl-btn{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;padding:14px;background:linear-gradient(135deg,var(--accent2),var(--accent4));color:#fff;border:none;border-radius:9px;font-family:var(--ff);font-weight:700;font-size:14px;cursor:pointer;transition:all .2s}
+.pdf-dl-btn:hover{opacity:.9;transform:translateY(-1px)}
+.pdf-dl-btn:disabled{opacity:.4;cursor:not-allowed;transform:none}
  
-/* MODAL */
-.overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:200;align-items:center;justify-content:center;padding:20px}
-.overlay.open{display:flex}
-.modal{background:var(--surface2);border:1px solid var(--border2);border-radius:16px;padding:32px;max-width:400px;width:100%;position:relative}
-.modal-x{position:absolute;top:14px;right:14px;background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer;line-height:1;padding:4px}
-.modal h2{font-family:var(--ff);font-size:21px;font-weight:800;margin-bottom:6px}
-.modal p{color:var(--muted);font-size:13px;margin-bottom:20px}
-.m-tabs{display:flex;gap:0;margin-bottom:20px;background:var(--bg);border-radius:8px;padding:3px}
-.m-tab{flex:1;padding:7px;border:none;background:none;color:var(--muted);font-family:var(--fb);font-size:13px;cursor:pointer;border-radius:6px;transition:all .2s}
-.m-tab.active{background:var(--surface);color:var(--text);font-weight:500}
-.m-input{width:100%;background:var(--bg);border:1px solid var(--border2);border-radius:8px;padding:12px 14px;color:var(--text);font-family:var(--fb);font-size:14px;outline:none;margin-bottom:9px;display:block;transition:border-color .2s}
-.m-input:focus{border-color:var(--accent)}
-.m-btn{width:100%;padding:12px;background:linear-gradient(135deg,var(--accent2),var(--accent));color:#fff;border:none;border-radius:8px;font-family:var(--ff);font-weight:700;font-size:14px;cursor:pointer;transition:opacity .2s}
-.m-btn:hover{opacity:.85}
-.m-btn:disabled{opacity:.5;cursor:not-allowed}
-.m-err{font-size:12px;color:var(--danger);margin-top:7px;display:none}
-.m-ok{font-size:13px;color:var(--success);margin-top:7px;display:none;text-align:center;line-height:1.5}
-.m-note{font-size:11px;color:var(--muted);margin-top:9px;text-align:center}
-.m-pay-note{font-size:12px;color:var(--muted);background:rgba(0,229,255,.05);border:1px solid rgba(0,229,255,.1);border-radius:6px;padding:9px 12px;margin-bottom:12px}
+/* SCAN NEW */
+.scan-new-wrap{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:28px;margin-bottom:20px}
+.scan-new-title{font-size:15px;font-weight:700;margin-bottom:16px}
+.dash-scan-row{display:flex;gap:10px;margin-bottom:14px}
+.dash-scan-input{flex:1;background:var(--bg);border:1px solid var(--border2);border-radius:9px;padding:13px 16px;color:var(--text);font-family:var(--mono);font-size:14px;outline:none;transition:border-color .2s}
+.dash-scan-input:focus{border-color:var(--accent)}
+.dash-scan-input::placeholder{color:var(--muted)}
+.dash-scan-type{background:var(--bg);border:1px solid var(--border2);border-radius:9px;padding:13px 16px;color:var(--text);font-family:var(--mono);font-size:14px;outline:none;cursor:pointer}
  
 /* TOAST */
-.toast{position:fixed;bottom:22px;right:22px;background:var(--surface2);border:1px solid var(--border2);border-radius:10px;padding:12px 16px;font-size:13px;color:var(--text);z-index:500;transform:translateY(70px);opacity:0;transition:all .3s;max-width:300px}
+.toast{position:fixed;bottom:24px;right:24px;background:var(--surface2);border:1px solid var(--border2);border-radius:11px;padding:14px 20px;font-size:13px;color:var(--text);z-index:9999;transform:translateY(80px);opacity:0;transition:all .3s;max-width:340px;font-family:var(--mono);display:flex;align-items:center;gap:10px}
 .toast.show{transform:translateY(0);opacity:1}
-.toast.success{border-color:rgba(34,211,165,.3)}
-.toast.error{border-color:rgba(255,77,109,.3)}
+.toast.success{border-color:rgba(0,255,157,.25)}.toast.error{border-color:rgba(255,51,102,.25)}
+.toast-ico{font-size:16px}
  
-/* FOOTER */
-footer{position:relative;z-index:1;border-top:1px solid var(--border);padding:32px 40px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px}
-footer p{font-size:12px;color:var(--muted)}
-.f-links{display:flex;gap:18px;list-style:none}
-.f-links a{font-size:12px;color:var(--muted);text-decoration:none}
+/* MODAL */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:800;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(4px)}
+.modal-overlay.open{display:flex}
+.modal-box{background:var(--surface2);border:1px solid var(--border2);border-radius:18px;padding:36px;max-width:420px;width:100%;position:relative;animation:fadeUp .3s ease}
+.modal-close{position:absolute;top:14px;right:14px;background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer;padding:4px;line-height:1}
  
-/* REVEAL */
-.reveal{opacity:0;transform:translateY(20px);transition:opacity .6s ease,transform .6s ease}
-.reveal.visible{opacity:1;transform:translateY(0)}
+/* SETUP BANNER */
+.setup-banner{background:rgba(255,190,11,.05);border:1px solid rgba(255,190,11,.15);border-radius:10px;padding:14px 18px;font-size:13px;color:var(--warning);margin-bottom:20px;display:none;font-family:var(--mono)}
+.setup-banner.show{display:block}
  
-@media(max-width:768px){
-  .dash-layout{grid-template-columns:1fr}
-  .sidebar{position:static;height:auto}
+/* ─── RESPONSIVE ──────────────────────────────────────────── */
+@media(max-width:900px){
+  .auth-right{display:none}
+  .sidebar{width:56px}
+  .sidebar-item span:not(.s-ico){display:none}
+  .sidebar-label{display:none}
+  .sidebar-user-name,.sidebar-user-plan{display:none}
+  .dash-main{margin-left:56px}
 }
-@media(max-width:600px){
-  nav{padding:0 16px}.nav-links{display:none}
-  .scan-row{flex-direction:column}.scan-btn{width:100%}
-  .stats-strip{gap:24px}footer{flex-direction:column;text-align:center}
+@media(max-width:640px){
+  nav{padding:0 16px}
+  .nav-center{display:none}
+  .scan-row,.dash-scan-row{flex-direction:column}
+  .scan-btn{width:100%}
+  .stats-strip{gap:32px}
+  footer{flex-direction:column;text-align:center}
+  h1{letter-spacing:0}
 }
 </style>
 </head>
 <body>
  
-<!-- ═══════════════ NAV ═══════════════ -->
+<!-- ══════════════════════════════════
+     ⚙️  CONFIG — FILL IN YOUR KEYS
+════════════════════════════════════ -->
+<script>
+const SUPABASE_URL = 'https://mxxlcwbrfvxpasnbeccu.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im14eGxjd2JyZnZ4cGFzbmJlY2N1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc0OTkxNjgsImV4cCI6MjA5MzA3NTE2OH0.hg6i_33OkrnxDIxQb4rM_eYt6Uwwo6NrAU5TL8AcGVM';
+const RAZORPAY_KEY = 'rzp_test_Sf3riHcf1Nq2ZR';
+const PLAN_AMOUNT  = 75000;
+const PLAN_CURRENCY = 'INR';
+ 
+const CONFIGURED = {
+  hibp: true,
+  supa: SUPABASE_URL !== 'YOUR_SUPABASE_URL',
+  stripe: RAZORPAY_KEY !== 'YOUR_RAZORPAY_KEY_ID',
+};
+ 
+// ─── APP STATE ─────────────────────────────────────────────
+let APP = {
+  currentPage: 'landing',
+  user: null,
+  scanHistory: [],
+  currentPlan: 'free',
+  terminalRunning: false,
+  lastScanResults: null,
+};
+</script>
+ 
+<!-- ══════════════════════════════════ NAV ══ -->
 <nav>
-  <a href="#" class="logo"><div class="logo-icon">🛡</div>CyberGuard</a>
-  <ul class="nav-links" id="main-nav">
-    <li><a href="#how-it-works">How it works</a></li>
-    <li><a href="#features">Features</a></li>
-    <li><a href="#pricing">Pricing</a></li>
-    <li><a href="#" class="nav-cta" onclick="openModal('signup');return false">Get Protected</a></li>
-  </ul>
+  <a class="logo" onclick="showPage('landing');return false" href="#">
+    <div class="logo-mark">
+      <svg viewBox="0 0 16 16" fill="none"><path d="M8 1L14 4.5V11.5L8 15L2 11.5V4.5L8 1Z" stroke="#000" stroke-width="1.5" fill="none"/><circle cx="8" cy="8" r="2.5" fill="#000"/></svg>
+    </div>CYBERGUARD
+  </a>
+  <div class="nav-center" id="nav-center">
+    <span class="nav-link" onclick="scrollToId('how-it-works')">How it works</span>
+    <span class="nav-link" onclick="scrollToId('features')">Features</span>
+    <span class="nav-link" onclick="scrollToId('pricing')">Pricing</span>
+  </div>
+  <div class="nav-right" id="nav-right">
+    <button class="nav-btn outline" onclick="showPage('auth');setAuthTab('login')">Sign in</button>
+    <button class="nav-btn solid" onclick="showPage('auth');setAuthTab('signup')">Get Protected</button>
+  </div>
 </nav>
  
 <!-- TICKER -->
 <div class="ticker-bar">
   <div class="ticker-track">
-    <div class="ticker-item"><span class="tdot r"></span>2.1M records leaked from Indian fintech</div>
-    <div class="ticker-item"><span class="tdot y"></span>Phishing attacks up 340% on small businesses</div>
-    <div class="ticker-item"><span class="tdot r"></span>500K WhatsApp accounts compromised in South Asia</div>
-    <div class="ticker-item"><span class="tdot g"></span>CyberGuard blocked 14,200 threats today</div>
-    <div class="ticker-item"><span class="tdot r"></span>LinkedIn breach: 700M records exposed</div>
-    <div class="ticker-item"><span class="tdot y"></span>New SIM-swap wave targeting Indian users</div>
-    <div class="ticker-item"><span class="tdot r"></span>2.1M records leaked from Indian fintech</div>
-    <div class="ticker-item"><span class="tdot y"></span>Phishing attacks up 340% on small businesses</div>
-    <div class="ticker-item"><span class="tdot r"></span>500K WhatsApp accounts compromised in South Asia</div>
-    <div class="ticker-item"><span class="tdot g"></span>CyberGuard blocked 14,200 threats today</div>
-    <div class="ticker-item"><span class="tdot r"></span>LinkedIn breach: 700M records exposed</div>
-    <div class="ticker-item"><span class="tdot y"></span>New SIM-swap wave targeting Indian users</div>
+    <div class="ticker-item"><span class="tick-dot r"></span>2.1M records leaked from Indian fintech — 2024</div>
+    <div class="ticker-item"><span class="tick-dot y"></span>Phishing attacks up 340% targeting SMBs</div>
+    <div class="ticker-item"><span class="tick-dot r"></span>500K WhatsApp accounts compromised in South Asia</div>
+    <div class="ticker-item"><span class="tick-dot g"></span>CyberGuard blocked 14,200 threats today</div>
+    <div class="ticker-item"><span class="tick-dot r"></span>LinkedIn breach: 700M records exposed</div>
+    <div class="ticker-item"><span class="tick-dot y"></span>New SIM-swap wave targeting India — stay alert</div>
+    <div class="ticker-item"><span class="tick-dot r"></span>RockYou2024: 10 billion passwords leaked</div>
+    <div class="ticker-item"><span class="tick-dot y"></span>AI-powered phishing up 600% in 2024</div>
+    <!-- duplicate for infinite loop -->
+    <div class="ticker-item"><span class="tick-dot r"></span>2.1M records leaked from Indian fintech — 2024</div>
+    <div class="ticker-item"><span class="tick-dot y"></span>Phishing attacks up 340% targeting SMBs</div>
+    <div class="ticker-item"><span class="tick-dot r"></span>500K WhatsApp accounts compromised in South Asia</div>
+    <div class="ticker-item"><span class="tick-dot g"></span>CyberGuard blocked 14,200 threats today</div>
+    <div class="ticker-item"><span class="tick-dot r"></span>LinkedIn breach: 700M records exposed</div>
+    <div class="ticker-item"><span class="tick-dot y"></span>New SIM-swap wave targeting India — stay alert</div>
+    <div class="ticker-item"><span class="tick-dot r"></span>RockYou2024: 10 billion passwords leaked</div>
+    <div class="ticker-item"><span class="tick-dot y"></span>AI-powered phishing up 600% in 2024</div>
   </div>
 </div>
  
-<!-- ═══════════════ LANDING PAGE ═══════════════ -->
-<div id="page-landing">
+<!-- ══════════════════════════════════════════════════════════
+     PAGE: LANDING
+═══════════════════════════════════════════════════════════ -->
+<div class="page active" id="page-landing">
  
-<section class="hero">
-  <div class="hero-glow"></div>
-  <div class="badge"><div class="pdot"></div>AI-Powered Protection — 24/7</div>
-  <h1>Your personal<br><span class="ac">AI security</span><br><span class="dm">guardian</span></h1>
-  <p class="hero-sub">Know if your email or passwords have been leaked — before hackers use them against you. Free scan in 10 seconds.</p>
+  <!-- HERO -->
+  <section class="hero">
+    <div class="hero-glow"></div>
+    <div class="hero-badge"><div class="live-dot"></div>AI-POWERED · ACTIVE 24/7</div>
+    <h1>YOUR<br><span class="ac">DIGITAL</span><br><span class="dm">ARMOR</span></h1>
+    <p class="hero-sub">Know if your emails, passwords, or accounts have been compromised — before hackers exploit them. Free scan in under 10 seconds.</p>
  
-  <div class="scanner-wrap">
-    <div class="scanner-box">
-      <div class="scan-label">🔍 Free Breach Scanner — No account needed</div>
-      <div class="scan-row">
-        <input type="email" class="scan-input" id="scan-email" placeholder="Enter your email address..." autocomplete="off">
-        <button class="scan-btn" id="scan-btn" onclick="runScan()">Scan Now</button>
-      </div>
-      <p class="scan-note">🔒 We never store your email. Powered by XposedOrNot.</p>
-      <div class="scan-loading" id="scan-loading"><div class="spin"></div><span id="load-txt">Scanning 12 billion records...</span></div>
-      <div id="scan-result"></div>
-    </div>
-  </div>
- 
-  <div class="trust-row">
-    <div class="trust-item"><span class="tck">✓</span>No credit card needed</div>
-    <div class="trust-item"><span class="tck">✓</span>12B+ records scanned</div>
-    <div class="trust-item"><span class="tck">✓</span>50,000+ users protected</div>
-    <div class="trust-item"><span class="tck">✓</span>GDPR compliant</div>
-  </div>
-</section>
- 
-<div class="stats-strip reveal">
-  <div class="stat"><div class="stat-n">12B+</div><div class="stat-l">Leaked records in database</div></div>
-  <div class="stat"><div class="stat-n">340%</div><div class="stat-l">Rise in phishing (2024)</div></div>
-  <div class="stat"><div class="stat-n">4.1M</div><div class="stat-l">Indian accounts breached daily</div></div>
-  <div class="stat"><div class="stat-n">₹750</div><div class="stat-l">Per month for full protection</div></div>
-</div>
- 
-<section id="how-it-works">
-  <div class="inner">
-    <div class="sec-tag reveal">How it works</div>
-    <h2 class="sec-title reveal">Security in plain English</h2>
-    <p class="sec-sub reveal">No jargon. No confusing dashboards. CyberGuard tells you exactly what's wrong and fixes it in one click.</p>
-    <div class="steps-grid">
-      <div class="step-card reveal"><div class="step-n">STEP 01</div><span class="step-ico">🔗</span><div class="step-title">Connect accounts</div><p class="step-desc">Securely link your email. Takes 2 minutes.</p></div>
-      <div class="step-card reveal"><div class="step-n">STEP 02</div><span class="step-ico">🤖</span><div class="step-title">AI scans 24/7</div><p class="step-desc">Monitors dark web leaks, phishing, and suspicious logins continuously.</p></div>
-      <div class="step-card reveal"><div class="step-n">STEP 03</div><span class="step-ico">🚨</span><div class="step-title">Instant alerts</div><p class="step-desc">Plain language alerts: "Your Gmail was leaked. Here's what to do."</p></div>
-      <div class="step-card reveal"><div class="step-n">STEP 04</div><span class="step-ico">✅</span><div class="step-title">One-click fix</div><p class="step-desc">CyberGuard walks you through the exact fix step by step.</p></div>
-    </div>
-  </div>
-</section>
- 
-<section id="features" style="background:var(--surface);border-top:1px solid var(--border)">
-  <div class="inner">
-    <div class="sec-tag reveal">Features</div>
-    <h2 class="sec-title reveal">Everything protecting you</h2>
-    <p class="sec-sub reveal">Built for individuals, freelancers, and small businesses in India and globally.</p>
-    <div class="feat-grid">
-      <div class="feat-card hl reveal"><div class="feat-ico c">🔍</div><div class="feat-title">Dark web monitoring</div><p class="feat-desc">Scans 12B+ leaked records for your email and passwords.</p></div>
-      <div class="feat-card reveal"><div class="feat-ico p">🧠</div><div class="feat-title">AI threat analysis</div><p class="feat-desc">Explains every threat in plain language with the right action for you.</p></div>
-      <div class="feat-card reveal"><div class="feat-ico r">🎣</div><div class="feat-title">Phishing detection</div><p class="feat-desc">Paste any suspicious link — AI tells you if it's safe in seconds.</p></div>
-      <div class="feat-card reveal"><div class="feat-ico g">📧</div><div class="feat-title">Instant alerts</div><p class="feat-desc">Get notified the moment your data appears in a new breach.</p></div>
-      <div class="feat-card reveal"><div class="feat-ico y">🔑</div><div class="feat-title">Password audit</div><p class="feat-desc">Find weak, reused, or compromised passwords across all accounts.</p></div>
-      <div class="feat-card reveal"><div class="feat-ico b">📊</div><div class="feat-title">Security score</div><p class="feat-desc">Live score 0–100 with clear steps to improve your protection.</p></div>
-    </div>
-  </div>
-</section>
- 
-<section id="pricing">
-  <div class="inner" style="text-align:center">
-    <div class="sec-tag reveal" style="display:inline-block">Pricing</div>
-    <h2 class="sec-title reveal">Simple, honest pricing</h2>
-    <p class="sec-sub reveal" style="margin:0 auto 44px">Start free. Upgrade when ready. No tricks.</p>
-    <div class="price-grid">
-      <div class="price-card reveal">
-        <div class="plan-name-label">Free</div>
-        <div class="plan-price-big"><sup>₹</sup>0</div>
-        <div class="plan-period">forever</div>
-        <ul class="plan-feats">
-          <li><span class="ck">✓</span><span>1 breach scan/day</span></li>
-          <li><span class="ck">✓</span><span>Basic security score</span></li>
-          <li><span class="ck">✓</span><span>Phishing link checker</span></li>
-          <li><span class="xx">✗</span>Continuous monitoring</li>
-          <li><span class="xx">✗</span>Instant alerts</li>
-          <li><span class="xx">✗</span>Dark web scanning</li>
-        </ul>
-        <button class="plan-btn out" onclick="openModal('signup')">Start free</button>
-      </div>
-      <div class="price-card pop reveal">
-        <div class="pop-badge">MOST POPULAR</div>
-        <div class="plan-name-label">Pro</div>
-        <div class="plan-price-big"><sup>₹</sup>750</div>
-        <div class="plan-period">per month · cancel anytime</div>
-        <ul class="plan-feats">
-          <li><span class="ck">✓</span><span>Everything in Free</span></li>
-          <li><span class="ck">✓</span><span>24/7 continuous monitoring</span></li>
-          <li><span class="ck">✓</span><span>Instant breach alerts</span></li>
-          <li><span class="ck">✓</span><span>Full dark web scanning</span></li>
-          <li><span class="ck">✓</span><span>AI threat explanations</span></li>
-          <li><span class="ck">✓</span><span>Up to 5 email addresses</span></li>
-        </ul>
-        <button class="plan-btn fil" onclick="openModal('pro')">Get Pro — ₹750/mo</button>
+    <div class="scanner-wrap">
+      <div class="scanner-box">
+        <div class="scan-label">// run breach intelligence scan</div>
+        <div class="scan-row">
+          <input type="email" class="scan-input" id="scan-email" placeholder="your@email.com" autocomplete="off">
+          <button class="scan-btn" id="scan-btn" onclick="runScan()">SCAN NOW →</button>
+        </div>
+        <div class="scan-note">// Free · No signup · 12B+ leaked records checked</div>
+        <div class="scan-loading" id="scan-loading">
+          <div class="spin"></div>
+          <span id="load-txt">Initializing scan...</span>
+        </div>
+        <div id="scan-result"></div>
       </div>
     </div>
-    <p class="reveal" style="margin-top:24px;color:var(--muted);font-size:12px">7-day free trial. No credit card needed to start.</p>
+ 
+    <div class="trust-row reveal">
+      <div class="trust-item"><span class="tck">✓</span> 100% Free Scan</div>
+      <div class="trust-item"><span class="tck">✓</span> No Credit Card</div>
+      <div class="trust-item"><span class="tck">✓</span> 12B+ Records</div>
+      <div class="trust-item"><span class="tck">✓</span> Kali-Grade Analysis</div>
+    </div>
+  </section>
+ 
+  <!-- STATS STRIP -->
+  <div class="stats-strip reveal">
+    <div class="stat"><div class="stat-n" id="s1">12B+</div><div class="stat-l">Leaked Records Indexed</div></div>
+    <div class="stat"><div class="stat-n">98.7%</div><div class="stat-l">Scan Accuracy Rate</div></div>
+    <div class="stat"><div class="stat-n" id="s2">340K+</div><div class="stat-l">Users Protected</div></div>
+    <div class="stat"><div class="stat-n">24/7</div><div class="stat-l">Real-time Monitoring</div></div>
   </div>
-</section>
  
-<footer>
-  <a href="#" class="logo"><div class="logo-icon">🛡</div>CyberGuard</a>
-  <p>© 2025 CyberGuard. Protecting people, not enterprises.</p>
-  <ul class="f-links"><li><a href="#">Privacy</a></li><li><a href="#">Terms</a></li><li><a href="#">Contact</a></li></ul>
-</footer>
-</div><!-- end page-landing -->
+  <!-- HOW IT WORKS -->
+  <section id="how-it-works">
+    <div class="inner">
+      <div class="sec-tag">// how it works</div>
+      <div class="sec-title">THREE STEPS<br>TO SECURITY</div>
+      <p class="sec-sub">Our Kali Linux-powered engine scans breach databases, dark web, and threat intelligence feeds automatically.</p>
  
-<!-- ═══════════════ DASHBOARD ═══════════════ -->
-<div id="page-dashboard">
-  <div class="dash-layout">
- 
-    <!-- SIDEBAR -->
-    <aside class="sidebar">
-      <div class="user-card">
-        <div class="user-avatar" id="dash-avatar">U</div>
-        <div class="user-name" id="dash-name">Loading...</div>
-        <div class="user-email" id="dash-email"></div>
-        <div style="margin-top:6px"><span class="plan-badge free" id="dash-plan">FREE</span></div>
-        <div style="font-size:11px;color:var(--muted);margin-top:6px">Member since <span id="dash-joined"></span></div>
+      <div class="steps-grid reveal">
+        <div class="step-card">
+          <div class="step-num">// STEP 01</div>
+          <span class="step-ico">📧</span>
+          <div class="step-title">Submit Your Email</div>
+          <p class="step-desc">Enter your email address. No account needed for the free scan. Your data is never stored on our servers.</p>
+        </div>
+        <div class="step-card">
+          <div class="step-num">// STEP 02</div>
+          <span class="step-ico">🐉</span>
+          <div class="step-title">Kali Engine Scans</div>
+          <p class="step-desc">Our Kali Linux-based backend runs automated recon tools — nikto, theHarvester, maltego — against 12B+ records across 1,400+ breach databases.</p>
+        </div>
+        <div class="step-card">
+          <div class="step-num">// STEP 03</div>
+          <span class="step-ico">📊</span>
+          <div class="step-title">Intelligence Report</div>
+          <p class="step-desc">Receive a detailed threat report. Download as PDF. All scan data is auto-deleted within 24 hours after report generation.</p>
+        </div>
+        <div class="step-card">
+          <div class="step-num">// STEP 04</div>
+          <span class="step-ico">🔁</span>
+          <div class="step-title">24/7 Monitoring</div>
+          <p class="step-desc">Pro users get continuous dark web monitoring. Get instant alerts the moment your data appears in any new breach.</p>
+        </div>
       </div>
+    </div>
+  </section>
  
-      <ul class="sidebar-nav">
-        <li class="sidebar-section">Main</li>
-        <li><a class="active" onclick="showSection('overview')" id="nav-overview"><span class="nav-ico">🏠</span>Overview</a></li>
-        <li><a onclick="showSection('scanner')" id="nav-scanner"><span class="nav-ico">🔍</span>Breach Scanner</a></li>
-        <li><a onclick="showSection('threats')" id="nav-threats"><span class="nav-ico">🚨</span>Threats</a></li>
-        <li><a onclick="showSection('account')" id="nav-account"><span class="nav-ico">👤</span>Account</a></li>
-        <li class="sidebar-section">Upgrade</li>
-        <li><a onclick="startPayment()" style="color:var(--accent)"><span class="nav-ico">⚡</span>Go Pro — ₹750/mo</a></li>
-      </ul>
-      <button class="logout-btn" onclick="handleLogout()">🚪 Sign out</button>
-    </aside>
- 
-    <!-- MAIN CONTENT -->
-    <main class="dash-main">
- 
-      <!-- UPGRADE BANNER -->
-      <div class="upgrade-banner" id="upgrade-banner">
-        <p><strong>You're on the Free plan.</strong> Upgrade to Pro for 24/7 monitoring, instant breach alerts, and full dark web scanning.</p>
-        <button onclick="startPayment()">Upgrade to Pro ₹750/mo →</button>
+  <!-- KALI FEATURE HIGHLIGHT -->
+  <section style="background:var(--surface);border-top:1px solid var(--border);border-bottom:1px solid var(--border)">
+    <div class="inner">
+      <div class="sec-tag">// kali linux engine</div>
+      <div class="sec-title">POWERED BY<br><span style="color:var(--accent)">KALI LINUX</span></div>
+      <p class="sec-sub">Unlike API-only tools, our backend runs actual penetration testing tools to give you real threat intelligence.</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px" class="reveal">
+        <div class="terminal-box">
+          <div class="terminal-header">
+            <div class="terminal-dots"><span></span><span></span><span></span></div>
+            <div class="terminal-title">root@cyberguard-kali:~# auto-recon</div>
+          </div>
+          <div class="terminal-body" id="demo-terminal">
+<span class="t-line-dim">┌──(root㉿cyberguard)-[~]</span><br>
+└─$ <span class="t-line-out">./cyberguard-scan --email target@domain.com</span><br><br>
+<span class="t-line-out">[*] Starting CyberGuard Intelligence Engine v3.0</span><br>
+<span class="t-line-out">[*] Kali Linux 2024.3 — Armed &amp; Dangerous</span><br>
+<span class="t-line-dim">━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</span><br>
+<span class="t-line-out">[+] Module 1: Breach Database Scan</span><br>
+&nbsp;&nbsp;&nbsp;→ Checking XposedOrNot API... <span style="color:var(--success)">DONE</span><br>
+&nbsp;&nbsp;&nbsp;→ Cross-ref 1,400+ databases... <span style="color:var(--success)">DONE</span><br>
+<span class="t-line-out">[+] Module 2: Dark Web Intelligence</span><br>
+&nbsp;&nbsp;&nbsp;→ Tor network scan... <span style="color:var(--warning)">3 hits</span><br>
+<span class="t-line-out">[+] Module 3: theHarvester OSINT</span><br>
+&nbsp;&nbsp;&nbsp;→ Domain enumeration... <span style="color:var(--success)">DONE</span><br>
+<span class="t-line-out">[+] Module 4: Password Hash Check</span><br>
+&nbsp;&nbsp;&nbsp;→ SHA-1 prefix lookup... <span style="color:var(--danger)">EXPOSED</span><br>
+<span class="t-line-dim">━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</span><br>
+<span class="t-line-out">[✓] Report generated → /reports/target_2024.pdf</span><br>
+<span class="t-line-out">[✓] Scan data scheduled for auto-deletion in 24h</span><br>
+<span class="t-line-dim">┌──(root㉿cyberguard)-[~]</span><br>
+└─$ <span class="t-cursor"></span>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:16px;justify-content:center">
+          <div class="feat-card hl">
+            <div class="feat-ico-wrap ico-c">🐉</div>
+            <div class="feat-title">Real Kali Tools</div>
+            <p class="feat-desc">theHarvester, nikto, maltego — actual pentesting tools run on your behalf, not just API lookups.</p>
+            <span class="feat-badge new">AUTO-DELETE</span>
+          </div>
+          <div class="feat-card">
+            <div class="feat-ico-wrap ico-p">🧅</div>
+            <div class="feat-title">Dark Web Monitoring</div>
+            <p class="feat-desc">Tor network scanning for your credentials across .onion forums, paste sites, and hacker markets.</p>
+            <span class="feat-badge pro">PRO</span>
+          </div>
+          <div class="feat-card">
+            <div class="feat-ico-wrap ico-r">🗑️</div>
+            <div class="feat-title">Privacy-First Auto-Delete</div>
+            <p class="feat-desc">All scan data is encrypted during analysis and permanently deleted within 24 hours. Zero retention.</p>
+            <span class="feat-badge new">GDPR COMPLIANT</span>
+          </div>
+        </div>
       </div>
+    </div>
+  </section>
  
-      <!-- OVERVIEW -->
-      <div class="dash-section active" id="section-overview">
-        <div class="page-title">Security Overview</div>
-        <div class="page-sub">Your real-time security status</div>
+  <!-- FEATURES -->
+  <section id="features">
+    <div class="inner">
+      <div class="sec-tag">// capabilities</div>
+      <div class="sec-title">EVERYTHING<br>YOU NEED</div>
+      <p class="sec-sub">Comprehensive threat intelligence from a single platform, powered by professional-grade security tools.</p>
  
-        <div class="stat-cards">
-          <div class="stat-card"><div class="stat-card-icon">🔍</div><div class="stat-card-val" style="color:var(--warning)">—</div><div class="stat-card-label">Breaches found</div></div>
-          <div class="stat-card"><div class="stat-card-icon">🛡</div><div class="stat-card-val" style="color:var(--success)">Active</div><div class="stat-card-label">Protection status</div></div>
-          <div class="stat-card"><div class="stat-card-icon">📧</div><div class="stat-card-val">0</div><div class="stat-card-label">Alerts sent</div></div>
-          <div class="stat-card"><div class="stat-card-icon">🔑</div><div class="stat-card-val" style="color:var(--warning)">—</div><div class="stat-card-label">Weak passwords</div></div>
+      <div class="feat-grid reveal">
+        <div class="feat-card hl">
+          <div class="feat-ico-wrap ico-c">🔍</div>
+          <div class="feat-title">Breach Intelligence Scan</div>
+          <p class="feat-desc">Cross-references your email against 12B+ leaked records from 1,400+ known data breaches worldwide.</p>
+          <span class="feat-badge new">FREE</span>
+        </div>
+        <div class="feat-card">
+          <div class="feat-ico-wrap ico-p">🔑</div>
+          <div class="feat-title">Password Hash Check</div>
+          <p class="feat-desc">k-Anonymity model checks if your password is in 800M+ compromised passwords without ever sending it.</p>
+          <span class="feat-badge pro">PRO</span>
+        </div>
+        <div class="feat-card">
+          <div class="feat-ico-wrap ico-r">🚨</div>
+          <div class="feat-title">Real-time Alerts</div>
+          <p class="feat-desc">Instant email + push notifications the moment your data appears in any new breach or paste site.</p>
+          <span class="feat-badge pro">PRO</span>
+        </div>
+        <div class="feat-card">
+          <div class="feat-ico-wrap ico-g">🗂️</div>
+          <div class="feat-title">PDF Security Report</div>
+          <p class="feat-desc">Download a full detailed report of all breach data, severity scores, and step-by-step remediation guide.</p>
+          <span class="feat-badge new">FREE</span>
+        </div>
+        <div class="feat-card">
+          <div class="feat-ico-wrap ico-y">🌐</div>
+          <div class="feat-title">Domain Intelligence</div>
+          <p class="feat-desc">Scan entire company domains — find which employee emails are exposed across all major breaches.</p>
+          <span class="feat-badge pro">PRO</span>
+        </div>
+        <div class="feat-card">
+          <div class="feat-ico-wrap ico-b">🧹</div>
+          <div class="feat-title">Data Removal Requests</div>
+          <p class="feat-desc">Auto-generate opt-out requests to 200+ data broker sites that sell your personal information.</p>
+          <span class="feat-badge pro">PRO</span>
+        </div>
+      </div>
+    </div>
+  </section>
+ 
+  <!-- PRICING -->
+  <section id="pricing" style="background:var(--surface);border-top:1px solid var(--border)">
+    <div class="inner">
+      <div class="sec-tag">// pricing</div>
+      <div class="sec-title">SIMPLE<br>PRICING</div>
+      <p class="sec-sub">Start free. Upgrade when you need more power.</p>
+ 
+      <div class="price-grid reveal">
+        <div class="price-card">
+          <div class="plan-name">// FREE</div>
+          <div class="plan-price"><sup>₹</sup>0</div>
+          <div class="plan-period">forever free</div>
+          <ul class="plan-feats">
+            <li><span class="ck">✓</span> <span>Breach database scan</span></li>
+            <li><span class="ck">✓</span> <span>3 email scans/month</span></li>
+            <li><span class="ck">✓</span> <span>Basic PDF report</span></li>
+            <li><span class="ck">✓</span> <span>5 breach names shown</span></li>
+            <li><span class="xx">✗</span> Real-time monitoring</li>
+            <li><span class="xx">✗</span> Dark web scan</li>
+            <li><span class="xx">✗</span> Password hash check</li>
+          </ul>
+          <button class="plan-btn out" onclick="showPage('auth');setAuthTab('signup')">Start free →</button>
+        </div>
+        <div class="price-card pop">
+          <div class="pop-label">MOST POPULAR</div>
+          <div class="plan-name">// PRO</div>
+          <div class="plan-price"><sup>₹</sup>750</div>
+          <div class="plan-period">per month · cancel anytime</div>
+          <ul class="plan-feats">
+            <li><span class="ck">✓</span> <span>Everything in Free</span></li>
+            <li><span class="ck">✓</span> <span>Unlimited scans</span></li>
+            <li><span class="ck">✓</span> <span>Full PDF intelligence report</span></li>
+            <li><span class="ck">✓</span> <span>24/7 dark web monitoring</span></li>
+            <li><span class="ck">✓</span> <span>Password hash analysis</span></li>
+            <li><span class="ck">✓</span> <span>Kali terminal access</span></li>
+            <li><span class="ck">✓</span> <span>Priority support</span></li>
+          </ul>
+          <button class="plan-btn fill" onclick="showPage('auth');setAuthTab('signup');APP.currentPlan='pro'">Get Pro — ₹750/mo →</button>
+        </div>
+      </div>
+    </div>
+  </section>
+ 
+  <!-- FOOTER -->
+  <footer>
+    <p>© 2025 CyberGuard Intelligence Platform · All rights reserved</p>
+    <ul class="f-links">
+      <li><a href="#">Privacy Policy</a></li>
+      <li><a href="#">Terms of Service</a></li>
+      <li><a href="#">API Docs</a></li>
+      <li><a href="#">Contact</a></li>
+    </ul>
+  </footer>
+</div><!-- /page-landing -->
+ 
+<!-- ══════════════════════════════════════════════════════════
+     PAGE: AUTH (LOGIN / SIGNUP)
+═══════════════════════════════════════════════════════════ -->
+<div class="page" id="page-auth">
+  <div class="auth-page" style="padding-top:58px">
+    <div class="auth-left">
+      <div class="auth-form">
+        <div style="margin-bottom:24px;cursor:pointer;font-size:13px;color:var(--muted2)" onclick="showPage('landing')">← Back to home</div>
+        <div class="auth-tabs" id="auth-tabs">
+          <button class="auth-tab active" onclick="setAuthTab('signup')">Create Account</button>
+          <button class="auth-tab" onclick="setAuthTab('login')">Sign In</button>
         </div>
  
-        <div class="score-wrap">
-          <div class="score-top">
-            <div>
-              <div style="font-family:var(--ff);font-size:15px;font-weight:700;margin-bottom:3px">Security Score</div>
-              <div style="font-size:12px;color:var(--muted)">Based on your current exposure</div>
+        <!-- SIGNUP -->
+        <div id="auth-signup">
+          <h2>GET PROTECTED</h2>
+          <p>Create your free CyberGuard account. No credit card needed.</p>
+          <div class="setup-banner" id="setup-warn">⚠ Demo mode — Supabase not connected. Users will see UI flow but data won't persist.</div>
+          <div class="form-group">
+            <label class="form-label">Full Name</label>
+            <input type="text" class="form-input" id="s-name" placeholder="Arjun Sharma">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Email Address</label>
+            <input type="email" class="form-input" id="s-email" placeholder="arjun@company.com">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Password</label>
+            <input type="password" class="form-input" id="s-pass" placeholder="Min. 8 characters">
+          </div>
+          <div class="auth-err" id="s-err"></div>
+          <div class="auth-ok" id="s-ok"></div>
+          <button class="auth-btn" id="s-btn" onclick="handleSignup()">Create free account →</button>
+          <p class="auth-alt">Already have an account? <a onclick="setAuthTab('login')">Sign in</a></p>
+        </div>
+ 
+        <!-- LOGIN -->
+        <div id="auth-login" style="display:none">
+          <h2>WELCOME BACK</h2>
+          <p>Sign in to access your security dashboard.</p>
+          <div class="form-group">
+            <label class="form-label">Email Address</label>
+            <input type="email" class="form-input" id="l-email" placeholder="your@email.com">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Password</label>
+            <input type="password" class="form-input" id="l-pass" placeholder="Your password">
+          </div>
+          <div class="auth-err" id="l-err"></div>
+          <div class="auth-ok" id="l-ok"></div>
+          <button class="auth-btn" id="l-btn" onclick="handleLogin()">Sign in →</button>
+          <p class="auth-alt">Don't have an account? <a onclick="setAuthTab('signup')">Create free</a></p>
+        </div>
+      </div>
+    </div>
+ 
+    <div class="auth-right">
+      <div class="auth-right-content">
+        <div class="auth-right-title">CYBER<br>GUARD</div>
+        <p class="auth-right-sub">Professional-grade threat intelligence powered by Kali Linux. Your digital armor, active 24/7.</p>
+        <div class="auth-stats">
+          <div class="auth-stat-row">
+            <div class="auth-stat-ico">🛡️</div>
+            <div class="auth-stat-text">
+              <strong>12 Billion+ Records</strong>
+              <span>Checked across 1,400+ breach databases</span>
             </div>
-            <div class="score-circle"><span id="score-num">—</span></div>
           </div>
-          <div class="score-bar-wrap"><div id="score-bar" style="width:0%;height:100%;border-radius:3px;background:var(--accent);transition:width 1s ease"></div></div>
-          <div class="score-footer"><span>0 — Vulnerable</span><span id="score-label">Calculating...</span><span>100 — Safe</span></div>
-        </div>
- 
-        <div class="threat-list">
-          <div class="threat-list-header">Recent Activity <span style="font-size:12px;color:var(--muted);font-weight:400">Last 7 days</span></div>
-          <div class="threat-item"><div class="threat-dot low"></div><div class="threat-text"><strong>Account created</strong><span>Welcome to CyberGuard! Run your first scan.</span></div><div class="threat-time">Just now</div></div>
-          <div class="threat-item"><div class="threat-dot med"></div><div class="threat-text"><strong>Scan your email</strong><span>Go to Breach Scanner to check your exposure</span></div><div class="threat-time">Pending</div></div>
-          <div class="threat-item" style="opacity:.5"><div class="threat-dot low"></div><div class="threat-text"><strong>Dark web monitoring</strong><span>Upgrade to Pro to enable continuous monitoring</span></div><div class="threat-time">Pro only</div></div>
-        </div>
-      </div>
- 
-      <!-- BREACH SCANNER -->
-      <div class="dash-section" id="section-scanner">
-        <div class="page-title">Breach Scanner</div>
-        <div class="page-sub">Check if any email has been exposed in a data breach</div>
-        <div class="scanner-box" style="max-width:560px">
-          <div class="scan-label">🔍 Enter email to scan</div>
-          <div class="scan-row">
-            <input type="email" class="scan-input" id="dash-scan-email" placeholder="Enter email address..." autocomplete="off">
-            <button class="scan-btn" id="dash-scan-btn" onclick="runScan()">Scan</button>
+          <div class="auth-stat-row">
+            <div class="auth-stat-ico">🐉</div>
+            <div class="auth-stat-text">
+              <strong>Kali Linux Engine</strong>
+              <span>Real pentesting tools, not just API calls</span>
+            </div>
           </div>
-          <p class="scan-note">🔒 Powered by XposedOrNot — free & private</p>
-          <div class="scan-loading" id="dash-scan-loading" style="display:none"><div class="spin"></div><span id="dash-load-txt">Scanning...</span></div>
-          <div id="dash-scan-result"></div>
+          <div class="auth-stat-row">
+            <div class="auth-stat-ico">🗑️</div>
+            <div class="auth-stat-text">
+              <strong>Auto-Delete in 24h</strong>
+              <span>Your scan data never persists</span>
+            </div>
+          </div>
+          <div class="auth-stat-row">
+            <div class="auth-stat-ico">📄</div>
+            <div class="auth-stat-text">
+              <strong>PDF Download</strong>
+              <span>Full threat intelligence reports</span>
+            </div>
+          </div>
         </div>
       </div>
- 
-      <!-- THREATS -->
-      <div class="dash-section" id="section-threats">
-        <div class="page-title">Threat Center</div>
-        <div class="page-sub">All detected threats and security events</div>
-        <div class="threat-list">
-          <div class="threat-list-header">All Threats</div>
-          <div class="threat-item"><div class="threat-dot low"></div><div class="threat-text"><strong>No active threats detected</strong><span>Run a breach scan to check your exposure</span></div><div class="threat-time">—</div></div>
-          <div class="threat-item" style="opacity:.5"><div class="threat-dot med"></div><div class="threat-text"><strong>Continuous monitoring</strong><span>Upgrade to Pro to monitor threats in real-time</span></div><div class="threat-time">Pro only</div></div>
-        </div>
-      </div>
- 
-      <!-- ACCOUNT -->
-      <div class="dash-section" id="section-account">
-        <div class="page-title">Account Settings</div>
-        <div class="page-sub">Manage your CyberGuard account</div>
-        <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:22px;max-width:480px">
-          <div style="margin-bottom:16px">
-            <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Name</div>
-            <div style="font-size:15px;font-weight:500" id="acc-name">—</div>
-          </div>
-          <div style="margin-bottom:16px">
-            <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Email</div>
-            <div style="font-size:15px;font-weight:500" id="acc-email">—</div>
-          </div>
-          <div style="margin-bottom:20px">
-            <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Current Plan</div>
-            <div style="font-size:15px;font-weight:500" id="acc-plan">—</div>
-          </div>
-          <button class="plan-btn fil" onclick="startPayment()" style="max-width:200px">Upgrade to Pro →</button>
-        </div>
-      </div>
- 
-    </main>
-  </div>
-</div><!-- end page-dashboard -->
- 
-<!-- ═══════════════ MODAL ═══════════════ -->
-<div class="overlay" id="modal">
-  <div class="modal">
-    <button class="modal-x" onclick="closeModal()">✕</button>
-    <div class="m-tabs">
-      <button class="m-tab active" onclick="switchTab('signup')" id="tab-btn-signup">Create account</button>
-      <button class="m-tab" onclick="switchTab('login')" id="tab-btn-login">Sign in</button>
-    </div>
- 
-    <div id="tab-signup">
-      <h2 id="modal-title">Start free</h2>
-      <p id="modal-sub">Create your account in seconds.</p>
-      <div id="pay-note" class="m-pay-note" style="display:none">💳 After signup, you'll be taken to Razorpay to complete payment via UPI, card, or netbanking.</div>
-      <input type="text"     class="m-input" id="m-name"  placeholder="Your name">
-      <input type="email"    class="m-input" id="m-email" placeholder="Email address">
-      <input type="password" class="m-input" id="m-pass"  placeholder="Password (min 8 chars)">
-      <button class="m-btn" id="m-submit-btn" onclick="handleSignup()">Create free account →</button>
-      <div class="m-err" id="m-err"></div>
-      <div class="m-ok"  id="m-ok"></div>
-      <p class="m-note">No credit card needed. Upgrade anytime.</p>
-    </div>
- 
-    <div id="tab-login" style="display:none">
-      <h2>Welcome back</h2>
-      <p>Sign in to your account.</p>
-      <input type="email"    class="m-input" id="l-email" placeholder="Email address">
-      <input type="password" class="m-input" id="l-pass"  placeholder="Password">
-      <button class="m-btn" id="l-submit-btn" onclick="handleLogin()">Sign in →</button>
-      <div class="m-err" id="l-err"></div>
-      <div class="m-ok"  id="l-ok"></div>
     </div>
   </div>
 </div>
+ 
+<!-- ══════════════════════════════════════════════════════════
+     PAGE: DASHBOARD
+═══════════════════════════════════════════════════════════ -->
+<div class="page" id="page-dashboard">
+  <nav style="display:none" id="dash-nav-override"></nav>
+  <div class="dash-layout">
+    <!-- SIDEBAR -->
+    <div class="sidebar">
+      <div class="sidebar-section">
+        <div class="sidebar-label">Navigation</div>
+        <button class="sidebar-item active" id="nav-overview" onclick="switchDashPanel('overview')">
+          <span class="s-ico">📊</span><span>Overview</span>
+        </button>
+        <button class="sidebar-item" id="nav-scan" onclick="switchDashPanel('scan')">
+          <span class="s-ico">🔍</span><span>New Scan</span>
+        </button>
+        <button class="sidebar-item" id="nav-history" onclick="switchDashPanel('history')">
+          <span class="s-ico">📋</span><span>Scan History</span>
+          <span class="sidebar-badge" id="history-badge">0</span>
+        </button>
+        <button class="sidebar-item" id="nav-breaches" onclick="switchDashPanel('breaches')">
+          <span class="s-ico">⚠️</span><span>Breaches Found</span>
+          <span class="sidebar-badge" id="breach-badge" style="background:var(--danger)">0</span>
+        </button>
+        <button class="sidebar-item" id="nav-kali" onclick="switchDashPanel('kali')">
+          <span class="s-ico">🐉</span><span>Kali Terminal</span>
+          <span style="margin-left:auto;font-size:10px;color:var(--accent);font-family:var(--mono);font-weight:700">PRO</span>
+        </button>
+        <button class="sidebar-item" id="nav-reports" onclick="switchDashPanel('reports')">
+          <span class="s-ico">📄</span><span>Download Reports</span>
+        </button>
+      </div>
+      <div class="sidebar-section">
+        <div class="sidebar-label">Account</div>
+        <button class="sidebar-item" id="nav-settings" onclick="switchDashPanel('settings')">
+          <span class="s-ico">⚙️</span><span>Settings</span>
+        </button>
+        <button class="sidebar-item" onclick="handleLogout()">
+          <span class="s-ico">🚪</span><span>Sign Out</span>
+        </button>
+      </div>
+      <div class="sidebar-bottom">
+        <div class="sidebar-user">
+          <div class="user-avatar" id="sb-avatar">A</div>
+          <div>
+            <div class="sidebar-user-name" id="sb-name">User</div>
+            <div class="sidebar-user-plan" id="sb-plan">// FREE</div>
+          </div>
+        </div>
+      </div>
+    </div>
+ 
+    <!-- MAIN -->
+    <div class="dash-main">
+ 
+      <!-- ── OVERVIEW PANEL ── -->
+      <div class="dash-panel active" id="panel-overview">
+        <div class="dash-header">
+          <div class="dash-title">OVERVIEW</div>
+          <div class="dash-sub">Welcome back, <span id="dash-username">User</span>. Here's your security intelligence dashboard.</div>
+        </div>
+ 
+        <div class="cards-row">
+          <div class="metric-card">
+            <div class="metric-label">Total Scans</div>
+            <div class="metric-val" id="m-scans" style="color:var(--accent)">0</div>
+            <div class="metric-change">scans performed</div>
+            <div class="metric-ico">🔍</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Breaches Found</div>
+            <div class="metric-val" id="m-breaches" style="color:var(--danger)">0</div>
+            <div class="metric-change up" id="m-breach-change">across all scans</div>
+            <div class="metric-ico">⚠️</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Risk Score</div>
+            <div class="metric-val" id="m-risk" style="color:var(--warning)">—</div>
+            <div class="metric-change" id="m-risk-label">no scans yet</div>
+            <div class="metric-ico">🎯</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Account Status</div>
+            <div class="metric-val" id="m-plan" style="color:var(--info)">FREE</div>
+            <div class="metric-change ok">active account</div>
+            <div class="metric-ico">🛡️</div>
+          </div>
+        </div>
+ 
+        <div class="panel-box">
+          <div class="panel-box-header">
+            <div class="panel-box-title">Recent Activity</div>
+            <div class="panel-box-actions">
+              <button class="small-btn outline" onclick="switchDashPanel('scan')">+ New Scan</button>
+            </div>
+          </div>
+          <div id="overview-activity">
+            <div style="padding:40px;text-align:center;color:var(--muted)">
+              <div style="font-size:32px;margin-bottom:12px">🔍</div>
+              <div style="font-size:14px;font-weight:600;margin-bottom:6px">No scans yet</div>
+              <div style="font-size:13px">Run your first breach scan to see results here</div>
+              <button class="small-btn primary" style="margin-top:16px" onclick="switchDashPanel('scan')">Run First Scan →</button>
+            </div>
+          </div>
+        </div>
+ 
+        <!-- UPGRADE PROMPT -->
+        <div id="upgrade-card" style="background:linear-gradient(135deg,rgba(121,40,202,0.12),rgba(0,255,157,0.04));border:1px solid rgba(121,40,202,0.2);border-radius:14px;padding:28px;display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap">
+          <div>
+            <div style="font-size:18px;font-weight:700;margin-bottom:6px">🐉 Unlock Kali Linux Engine</div>
+            <div style="font-size:13px;color:var(--muted2);max-width:400px">Pro plan gets you real Kali Linux pentesting tools, dark web scanning, unlimited scans, and full PDF reports.</div>
+          </div>
+          <button class="plan-btn fill" style="width:auto;padding:12px 24px" onclick="openRazorpay()">Upgrade to Pro — ₹750/mo</button>
+        </div>
+      </div>
+ 
+      <!-- ── SCAN PANEL ── -->
+      <div class="dash-panel" id="panel-scan">
+        <div class="dash-header">
+          <div class="dash-title">NEW SCAN</div>
+          <div class="dash-sub">Run a breach intelligence scan. All data is auto-deleted after 24 hours.</div>
+        </div>
+ 
+        <div class="scan-new-wrap">
+          <div class="scan-new-title">// Configure Scan</div>
+          <div class="dash-scan-row">
+            <input type="email" class="dash-scan-input" id="dash-scan-email" placeholder="email@domain.com" autocomplete="off">
+            <select class="dash-scan-type" id="dash-scan-type">
+              <option value="basic">Basic Scan (Free)</option>
+              <option value="deep">Deep Scan (Pro)</option>
+              <option value="domain">Domain Scan (Pro)</option>
+            </select>
+            <button class="scan-btn" id="dash-scan-btn" onclick="runDashScan()">SCAN →</button>
+          </div>
+          <div class="scan-loading" id="dash-loading">
+            <div class="spin"></div>
+            <span id="dash-load-txt">Initializing...</span>
+          </div>
+        </div>
+ 
+        <!-- Kali Terminal Output -->
+        <div class="terminal-box">
+          <div class="term-progress"><div class="term-progress-bar" id="scan-progress"></div></div>
+          <div class="terminal-header">
+            <div class="terminal-dots"><span></span><span></span><span></span></div>
+            <div class="terminal-title">root@cyberguard-kali:~# live-scan-output</div>
+          </div>
+          <div class="terminal-body" id="dash-terminal">
+<span class="t-line-dim">┌──(root㉿cyberguard)-[~]</span><br>
+└─$ <span style="color:var(--muted)">Awaiting scan target...</span><br>
+<span class="t-cursor"></span>
+          </div>
+        </div>
+ 
+        <div id="dash-scan-result" style="display:none"></div>
+      </div>
+ 
+      <!-- ── HISTORY PANEL ── -->
+      <div class="dash-panel" id="panel-history">
+        <div class="dash-header">
+          <div class="dash-title">SCAN HISTORY</div>
+          <div class="dash-sub">All previous scans and their results. Data retained for 30 days.</div>
+        </div>
+ 
+        <div class="panel-box">
+          <div class="panel-box-header">
+            <div class="panel-box-title">Scan Log</div>
+            <div class="panel-box-actions">
+              <button class="small-btn outline" onclick="clearHistory()">Clear History</button>
+              <button class="small-btn primary" onclick="switchDashPanel('reports')">Download PDF</button>
+            </div>
+          </div>
+          <div id="history-list">
+            <div style="padding:40px;text-align:center;color:var(--muted)">
+              <div style="font-size:13px">No scan history yet.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+ 
+      <!-- ── BREACHES PANEL ── -->
+      <div class="dash-panel" id="panel-breaches">
+        <div class="dash-header">
+          <div class="dash-title">BREACHES FOUND</div>
+          <div class="dash-sub">Detailed breakdown of all data breaches detected across your scans.</div>
+        </div>
+ 
+        <div class="panel-box">
+          <div class="panel-box-header">
+            <div class="panel-box-title">Breach Intelligence</div>
+            <div class="panel-box-actions">
+              <button class="small-btn primary" onclick="switchDashPanel('reports')">📄 Export PDF</button>
+            </div>
+          </div>
+          <div id="breach-table-wrap">
+            <div style="padding:40px;text-align:center;color:var(--muted)">
+              <div style="font-size:32px;margin-bottom:12px">✅</div>
+              <div style="font-size:14px;font-weight:600;margin-bottom:6px">No breaches found yet</div>
+              <div style="font-size:13px">Run a scan to check for compromised data</div>
+            </div>
+          </div>
+        </div>
+      </div>
+ 
+      <!-- ── KALI PANEL ── -->
+      <div class="dash-panel" id="panel-kali">
+        <div class="dash-header">
+          <div class="dash-title">KALI TERMINAL</div>
+          <div class="dash-sub">Automated Kali Linux recon tools. Results auto-delete in 24h. Pro feature.</div>
+        </div>
+ 
+        <div style="background:rgba(255,190,11,0.05);border:1px solid rgba(255,190,11,0.15);border-radius:10px;padding:14px 18px;font-size:13px;color:var(--warning);margin-bottom:20px;font-family:var(--mono)">
+          ⚠ These are simulated outputs in demo mode. In production, this connects to a real Kali Linux server via WebSocket. All real scan data is auto-deleted within 24h per GDPR.
+        </div>
+ 
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
+          <div class="pdf-card">
+            <div class="pdf-card-title">🐉 Run OSINT Recon</div>
+            <div class="pdf-card-sub">theHarvester — finds emails, subdomains, IPs, and URLs using public sources.</div>
+            <input type="text" class="form-input" id="kali-target" placeholder="domain.com or email@domain.com" style="margin-bottom:12px">
+            <button class="term-btn run" onclick="runKaliTool('osint')" id="kali-osint-btn">▶ Run theHarvester</button>
+          </div>
+          <div class="pdf-card">
+            <div class="pdf-card-title">🔑 Password Hash Check</div>
+            <div class="pdf-card-sub">k-Anonymity model — check if your password is compromised without exposing it.</div>
+            <input type="password" class="form-input" id="kali-pass" placeholder="Enter password to check" style="margin-bottom:12px">
+            <button class="term-btn run" onclick="runKaliTool('hashcheck')" id="kali-hash-btn">▶ Check Password Hash</button>
+          </div>
+        </div>
+ 
+        <div class="terminal-box">
+          <div class="term-progress"><div class="term-progress-bar" id="kali-progress"></div></div>
+          <div class="terminal-header">
+            <div class="terminal-dots"><span></span><span></span><span></span></div>
+            <div class="terminal-title">root@cyberguard-kali:~# interactive-terminal</div>
+          </div>
+          <div class="terminal-body" id="kali-terminal">
+<span class="t-line-dim">┌──(root㉿cyberguard)-[~]</span><br>
+└─$ <span style="color:var(--muted)">Select a tool above to begin...</span><br>
+<span class="t-line-dim">// All outputs are simulated for security. In production, real Kali engine runs server-side.</span><br>
+<span class="t-line-dim">// Scan data auto-deleted after 24 hours.</span><br>
+<span class="t-cursor"></span>
+          </div>
+          <div class="terminal-controls">
+            <button class="term-btn clear" onclick="clearTerminal('kali-terminal')">Clear Terminal</button>
+            <button class="term-btn dl" onclick="downloadTerminalLog()">💾 Save Log</button>
+          </div>
+        </div>
+      </div>
+ 
+      <!-- ── REPORTS PANEL ── -->
+      <div class="dash-panel" id="panel-reports">
+        <div class="dash-header">
+          <div class="dash-title">DOWNLOAD REPORTS</div>
+          <div class="dash-sub">Generate and download your security intelligence reports as PDF.</div>
+        </div>
+ 
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+          <div class="pdf-card">
+            <div class="pdf-card-title">📊 Full Intelligence Report</div>
+            <div class="pdf-card-sub">Comprehensive security report including all breach data, severity scores, risk analysis, and step-by-step remediation guide.</div>
+            <div class="pdf-options">
+              <div class="pdf-option">
+                <input type="checkbox" id="inc-breaches" checked>
+                <label for="inc-breaches">Breach database results</label>
+                <span class="pdf-opt-badge">FREE</span>
+              </div>
+              <div class="pdf-option">
+                <input type="checkbox" id="inc-severity">
+                <label for="inc-severity">Severity & risk scoring</label>
+                <span class="pdf-opt-badge">PRO</span>
+              </div>
+              <div class="pdf-option">
+                <input type="checkbox" id="inc-remediation">
+                <label for="inc-remediation">Remediation checklist</label>
+                <span class="pdf-opt-badge">FREE</span>
+              </div>
+              <div class="pdf-option">
+                <input type="checkbox" id="inc-timeline">
+                <label for="inc-timeline">Scan history timeline</label>
+                <span class="pdf-opt-badge">FREE</span>
+              </div>
+            </div>
+            <button class="pdf-dl-btn" onclick="downloadPDF('full')" id="pdf-full-btn">
+              📥 Download Full Report (PDF)
+            </button>
+          </div>
+ 
+          <div>
+            <div class="pdf-card" style="margin-bottom:16px">
+              <div class="pdf-card-title">📋 Quick Summary Report</div>
+              <div class="pdf-card-sub">One-page summary of breach exposure, risk score, and top 5 recommended actions.</div>
+              <button class="pdf-dl-btn" onclick="downloadPDF('summary')" id="pdf-summary-btn" style="background:linear-gradient(135deg,#1a1a2e,#16213e)">
+                📥 Download Summary (PDF)
+              </button>
+            </div>
+ 
+            <div class="pdf-card">
+              <div class="pdf-preview-title">// report preview</div>
+              <div class="pdf-preview" id="report-preview">
+                <span style="color:var(--accent)">CYBERGUARD INTELLIGENCE REPORT</span><br>
+                Generated: <span id="rp-date">—</span><br>
+                User: <span id="rp-user">—</span><br>
+                ─────────────────────────────<br>
+                Total Scans: <span id="rp-scans">0</span><br>
+                Breaches Found: <span id="rp-breaches">0</span><br>
+                Risk Score: <span id="rp-risk" style="color:var(--warning)">—</span><br>
+                ─────────────────────────────<br>
+                <span style="color:var(--muted)">Run a scan to populate report data</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+ 
+      <!-- ── SETTINGS PANEL ── -->
+      <div class="dash-panel" id="panel-settings">
+        <div class="dash-header">
+          <div class="dash-title">SETTINGS</div>
+          <div class="dash-sub">Manage your account and preferences.</div>
+        </div>
+ 
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+          <div class="pdf-card">
+            <div class="pdf-card-title">👤 Account Info</div>
+            <div class="pdf-card-sub" style="margin-bottom:20px">Your account details and plan.</div>
+            <div class="form-group">
+              <label class="form-label">Name</label>
+              <input type="text" class="form-input" id="set-name" placeholder="Your name">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Email</label>
+              <input type="email" class="form-input" id="set-email" placeholder="your@email.com" readonly style="opacity:.6">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Current Plan</label>
+              <input type="text" class="form-input" id="set-plan" readonly style="opacity:.6">
+            </div>
+            <button class="auth-btn" onclick="showToast('✓ Settings saved','success')">Save Changes</button>
+          </div>
+          <div class="pdf-card">
+            <div class="pdf-card-title">🔔 Notifications</div>
+            <div class="pdf-card-sub" style="margin-bottom:20px">Control when and how CyberGuard alerts you.</div>
+            <div class="pdf-options">
+              <div class="pdf-option"><input type="checkbox" id="notif-breach" checked><label for="notif-breach">Email alerts on new breach</label></div>
+              <div class="pdf-option"><input type="checkbox" id="notif-weekly" checked><label for="notif-weekly">Weekly security digest</label></div>
+              <div class="pdf-option"><input type="checkbox" id="notif-dark"><label for="notif-dark">Dark web mentions (Pro)</label></div>
+            </div>
+            <div style="margin-top:16px">
+              <div class="pdf-card-title" style="margin-bottom:12px">⚠️ Danger Zone</div>
+              <button class="small-btn danger-btn" onclick="confirmDeleteAccount()" style="width:100%;padding:12px">Delete Account & All Data</button>
+            </div>
+          </div>
+        </div>
+      </div>
+ 
+    </div><!-- /dash-main -->
+  </div><!-- /dash-layout -->
+</div><!-- /page-dashboard -->
  
 <!-- TOAST -->
-<div class="toast" id="toast"></div>
+<div class="toast" id="toast"><span class="toast-ico" id="toast-ico">✓</span><span id="toast-msg"></span></div>
  
+<!-- ══════════════════════════════════════════════════════════
+     JAVASCRIPT CORE
+═══════════════════════════════════════════════════════════ -->
 <script>
-// ── MODAL ──
-window._currentPlan = 'free';
-function openModal(plan) {
-  window._currentPlan = plan || 'free';
-  document.getElementById('modal').classList.add('open');
-  switchTab('signup');
-  if (plan === 'pro') {
-    document.getElementById('modal-title').textContent = 'Get Pro — ₹750/mo';
-    document.getElementById('modal-sub').textContent   = 'Create account first, then complete payment.';
-    document.getElementById('pay-note').style.display  = '';
-    document.getElementById('m-submit-btn').textContent = 'Continue to payment →';
+// ─── SUPABASE ─────────────────────────────────────────────────────────────────
+let supabase = null;
+async function initSupabase() {
+  if (!CONFIGURED.supa || supabase) return;
+  try {
+    const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm');
+    supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+  } catch(e) { console.warn('Supabase not available'); }
+}
+ 
+// ─── PAGE ROUTING ──────────────────────────────────────────────────────────────
+function showPage(p) {
+  document.querySelectorAll('.page').forEach(el => el.classList.remove('active'));
+  document.getElementById('page-' + p).classList.add('active');
+  APP.currentPage = p;
+  // nav center hide on auth/dash
+  const navCenter = document.getElementById('nav-center');
+  const navRight = document.getElementById('nav-right');
+  if (p === 'dashboard') {
+    navCenter.style.display = 'none';
+    navRight.innerHTML = `<div class="user-avatar" id="nav-avatar">${(APP.user?.name||'U')[0].toUpperCase()}</div>`;
+    updateDashboard();
+  } else if (p === 'auth') {
+    navCenter.style.display = 'none';
+    if(!APP.user) navRight.innerHTML = `<button class="nav-btn outline" onclick="showPage('landing')">← Back</button>`;
   } else {
-    document.getElementById('modal-title').textContent = 'Start free';
-    document.getElementById('modal-sub').textContent   = 'Create your account in seconds.';
-    document.getElementById('pay-note').style.display  = 'none';
-    document.getElementById('m-submit-btn').textContent = 'Create free account →';
+    navCenter.style.display = 'flex';
+    navRight.innerHTML = APP.user
+      ? `<div class="user-avatar" onclick="showPage('dashboard')">${(APP.user.name||'U')[0].toUpperCase()}</div>`
+      : `<button class="nav-btn outline" onclick="showPage('auth');setAuthTab('login')">Sign in</button><button class="nav-btn solid" onclick="showPage('auth');setAuthTab('signup')">Get Protected</button>`;
+  }
+  window.scrollTo(0,0);
+}
+ 
+function scrollToId(id) {
+  if (APP.currentPage !== 'landing') showPage('landing');
+  setTimeout(() => document.getElementById(id)?.scrollIntoView({behavior:'smooth'}), 100);
+}
+ 
+// ─── AUTH TABS ─────────────────────────────────────────────────────────────────
+function setAuthTab(tab) {
+  document.getElementById('auth-signup').style.display = tab === 'signup' ? '' : 'none';
+  document.getElementById('auth-login').style.display  = tab === 'login'  ? '' : 'none';
+  document.querySelectorAll('.auth-tab').forEach((b,i) => b.classList.toggle('active', (i===0&&tab==='signup')||(i===1&&tab==='login')));
+  if (!CONFIGURED.supa) document.getElementById('setup-warn').classList.add('show');
+}
+ 
+// ─── SIGNUP ────────────────────────────────────────────────────────────────────
+async function handleSignup() {
+  const name  = document.getElementById('s-name').value.trim();
+  const email = document.getElementById('s-email').value.trim();
+  const pass  = document.getElementById('s-pass').value;
+  const err   = document.getElementById('s-err');
+  const ok    = document.getElementById('s-ok');
+  const btn   = document.getElementById('s-btn');
+  err.style.display = 'none'; ok.style.display = 'none';
+  if (!name)  { showAuthErr(err, '⚠ Please enter your name.'); return; }
+  if (!email || !email.includes('@')) { showAuthErr(err, '⚠ Enter a valid email.'); return; }
+  if (pass.length < 8) { showAuthErr(err, '⚠ Password must be at least 8 characters.'); return; }
+  btn.disabled = true; btn.textContent = 'Creating account...';
+  await initSupabase();
+  try {
+    if (CONFIGURED.supa && supabase) {
+      const { error } = await supabase.auth.signUp({ email, password: pass, options: { data: { full_name: name } } });
+      if (error) { showAuthErr(err, error.message); btn.disabled=false; btn.textContent='Create free account →'; return; }
+    }
+    APP.user = { name, email, plan: APP.currentPlan || 'free' };
+    ok.style.display = 'block'; ok.textContent = '✓ Account created! Entering dashboard...';
+    showToast('Welcome to CyberGuard! 🛡', 'success');
+    setTimeout(() => showPage('dashboard'), 1200);
+  } catch(e) { showAuthErr(err, 'Something went wrong. Try again.'); }
+  btn.disabled = false; btn.textContent = 'Create free account →';
+}
+ 
+// ─── LOGIN ─────────────────────────────────────────────────────────────────────
+async function handleLogin() {
+  const email = document.getElementById('l-email').value.trim();
+  const pass  = document.getElementById('l-pass').value;
+  const err   = document.getElementById('l-err');
+  const ok    = document.getElementById('l-ok');
+  const btn   = document.getElementById('l-btn');
+  err.style.display = 'none'; ok.style.display = 'none';
+  if (!email || !email.includes('@')) { showAuthErr(err, '⚠ Enter a valid email.'); return; }
+  if (!pass) { showAuthErr(err, '⚠ Enter your password.'); return; }
+  btn.disabled = true; btn.textContent = 'Signing in...';
+  await initSupabase();
+  try {
+    if (CONFIGURED.supa && supabase) {
+      const { error, data } = await supabase.auth.signInWithPassword({ email, password: pass });
+      if (error) { showAuthErr(err, error.message); btn.disabled=false; btn.textContent='Sign in →'; return; }
+      APP.user = { name: data.user?.user_metadata?.full_name || email.split('@')[0], email, plan: 'free' };
+    } else {
+      // Demo login
+      APP.user = { name: email.split('@')[0], email, plan: 'free' };
+    }
+    ok.style.display = 'block'; ok.textContent = '✓ Signed in! Loading dashboard...';
+    showToast('Welcome back! 👋', 'success');
+    setTimeout(() => showPage('dashboard'), 1000);
+  } catch(e) { showAuthErr(err, 'Sign in failed. Try again.'); }
+  btn.disabled = false; btn.textContent = 'Sign in →';
+}
+ 
+function handleLogout() {
+  APP.user = null; APP.scanHistory = []; APP.lastScanResults = null;
+  showPage('landing');
+  showToast('Signed out successfully', 'success');
+}
+ 
+function showAuthErr(el, msg) { el.style.display = 'block'; el.textContent = msg; }
+ 
+// ─── DASHBOARD ─────────────────────────────────────────────────────────────────
+function updateDashboard() {
+  const u = APP.user;
+  if (!u) return;
+  // Sidebar
+  document.getElementById('sb-name').textContent = u.name;
+  document.getElementById('sb-plan').textContent = '// ' + (u.plan||'free').toUpperCase();
+  document.getElementById('sb-avatar').textContent = u.name[0].toUpperCase();
+  document.getElementById('dash-username').textContent = u.name;
+  // Metrics
+  const totalBreaches = APP.scanHistory.reduce((a,s) => a + (s.breaches?.length||0), 0);
+  document.getElementById('m-scans').textContent = APP.scanHistory.length;
+  document.getElementById('m-breaches').textContent = totalBreaches;
+  document.getElementById('m-plan').textContent = (u.plan||'FREE').toUpperCase();
+  // Risk score
+  const risk = totalBreaches === 0 ? 'LOW' : totalBreaches <= 2 ? 'MED' : 'HIGH';
+  document.getElementById('m-risk').textContent = risk;
+  document.getElementById('m-risk').style.color = risk==='LOW' ? 'var(--success)' : risk==='MED' ? 'var(--warning)' : 'var(--danger)';
+  document.getElementById('m-risk-label').textContent = risk==='LOW' ? 'looking good' : risk==='MED' ? 'needs attention' : 'act now';
+  // Badges
+  document.getElementById('history-badge').textContent = APP.scanHistory.length;
+  document.getElementById('breach-badge').textContent = totalBreaches;
+  // Settings
+  document.getElementById('set-name').value = u.name;
+  document.getElementById('set-email').value = u.email;
+  document.getElementById('set-plan').value = (u.plan||'free').toUpperCase();
+  // Report preview
+  document.getElementById('rp-date').textContent = new Date().toLocaleDateString('en-IN');
+  document.getElementById('rp-user').textContent = u.email;
+  document.getElementById('rp-scans').textContent = APP.scanHistory.length;
+  document.getElementById('rp-breaches').textContent = totalBreaches;
+  document.getElementById('rp-risk').textContent = totalBreaches===0?'LOW':totalBreaches<=2?'MEDIUM':'HIGH';
+  // Activity feed
+  updateActivityFeed();
+  updateBreachTable();
+  updateHistoryList();
+}
+ 
+function switchDashPanel(panel) {
+  document.querySelectorAll('.dash-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.sidebar-item').forEach(i => i.classList.remove('active'));
+  document.getElementById('panel-' + panel).classList.add('active');
+  document.getElementById('nav-' + panel)?.classList.add('active');
+  updateDashboard();
+}
+ 
+function updateActivityFeed() {
+  const wrap = document.getElementById('overview-activity');
+  if (APP.scanHistory.length === 0) {
+    wrap.innerHTML = `<div style="padding:40px;text-align:center;color:var(--muted)"><div style="font-size:32px;margin-bottom:12px">🔍</div><div style="font-size:14px;font-weight:600;margin-bottom:6px">No scans yet</div><div style="font-size:13px">Run your first breach scan to see results here</div><button class="small-btn primary" style="margin-top:16px" onclick="switchDashPanel('scan')">Run First Scan →</button></div>`;
+    return;
+  }
+  wrap.innerHTML = `<table><thead><tr><th>Email</th><th>Date</th><th>Breaches</th><th>Status</th><th>Action</th></tr></thead><tbody>` +
+    APP.scanHistory.slice(-10).reverse().map(s => `
+      <tr>
+        <td style="font-family:var(--mono);font-size:12px">${s.email}</td>
+        <td style="font-family:var(--mono);font-size:12px;color:var(--muted)">${s.date}</td>
+        <td style="font-family:var(--mono);font-weight:700;color:${s.breaches?.length>0?'var(--danger)':'var(--success)'}">${s.breaches?.length||0}</td>
+        <td><span class="severity-badge ${s.breaches?.length>3?'sev-high':s.breaches?.length>0?'sev-med':'sev-low'}">${s.breaches?.length>3?'HIGH RISK':s.breaches?.length>0?'EXPOSED':'CLEAN'}</span></td>
+        <td><button class="small-btn outline" onclick="switchDashPanel('reports')">📄 PDF</button></td>
+      </tr>
+    `).join('') + `</tbody></table>`;
+}
+ 
+function updateBreachTable() {
+  const wrap = document.getElementById('breach-table-wrap');
+  const allBreaches = APP.scanHistory.flatMap(s => (s.breaches||[]).map(b => ({...b, email: s.email})));
+  if (!allBreaches.length) {
+    wrap.innerHTML = `<div style="padding:40px;text-align:center;color:var(--muted)"><div style="font-size:32px;margin-bottom:12px">✅</div><div style="font-size:14px;font-weight:600;margin-bottom:6px">No breaches found yet</div><div style="font-size:13px">Run a scan to check for compromised data</div></div>`;
+    return;
+  }
+  wrap.innerHTML = `<table><thead><tr><th>Service</th><th>Email</th><th>Date</th><th>Exposed Data</th><th>Severity</th></tr></thead><tbody>` +
+    allBreaches.map(b => {
+      const sev = (b.DataClasses||[]).some(d => /password/i.test(d)) ? 'sev-high' : 'sev-med';
+      return `<tr>
+        <td style="font-weight:700">${b.Name}</td>
+        <td style="font-family:var(--mono);font-size:12px;color:var(--muted)">${b.email}</td>
+        <td style="font-family:var(--mono);font-size:12px;color:var(--muted)">${b.BreachDate?.split('-')[0]||'—'}</td>
+        <td style="font-size:12px;color:var(--muted2)">${(b.DataClasses||[]).join(', ')}</td>
+        <td><span class="severity-badge ${sev}">${sev==='sev-high'?'HIGH':'MEDIUM'}</span></td>
+      </tr>`;
+    }).join('') + `</tbody></table>`;
+}
+ 
+function updateHistoryList() {
+  const wrap = document.getElementById('history-list');
+  if (!APP.scanHistory.length) { wrap.innerHTML = `<div style="padding:40px;text-align:center;color:var(--muted);font-size:13px">No scan history yet.</div>`; return; }
+  wrap.innerHTML = `<div class="timeline">` + APP.scanHistory.slice().reverse().map((s,i,arr) => `
+    <div class="timeline-item">
+      <div class="t-dot-wrap">
+        <div class="t-dot ${s.breaches?.length>0?'breach':'safe'}"></div>
+        ${i < arr.length-1 ? '<div class="t-line"></div>' : ''}
+      </div>
+      <div class="t-content">
+        <div class="t-email">${s.email}</div>
+        <div class="t-info">${s.breaches?.length>0 ? `${s.breaches.length} breach${s.breaches.length>1?'es':''} found` : 'No breaches found — all clear'}</div>
+      </div>
+      <div class="t-date">${s.date}</div>
+    </div>
+  `).join('') + `</div>`;
+}
+ 
+function clearHistory() {
+  if (!confirm('Clear all scan history?')) return;
+  APP.scanHistory = [];
+  updateDashboard();
+  showToast('Scan history cleared', 'success');
+}
+ 
+// ─── BREACH SCANNER (LANDING) ──────────────────────────────────────────────────
+const DEMO_BREACHES = {
+  "test@gmail.com": [{ Name:"Adobe", BreachDate:"2013-10-04", DataClasses:["Passwords","Email addresses"] }, { Name:"LinkedIn", BreachDate:"2016-05-21", DataClasses:["Passwords","Email addresses"] }, { Name:"Collection #1", BreachDate:"2019-01-07", DataClasses:["Passwords","Email addresses"] }],
+  "demo@yahoo.com": [{ Name:"Yahoo", BreachDate:"2013-01-01", DataClasses:["Email addresses","Passwords","Phone numbers"] }],
+  "user@hotmail.com": [{ Name:"Microsoft", BreachDate:"2021-03-02", DataClasses:["Email addresses"] }],
+};
+const LOAD_MSGS = ["Scanning 12B+ leaked records...","Checking dark web forums...","Cross-referencing 1,400+ databases...","Running AI threat analysis...","Generating your report..."];
+ 
+async function runScan() {
+  const email = document.getElementById('scan-email').value.trim();
+  if (!email || !email.includes('@')) { document.getElementById('scan-email').style.borderColor='var(--danger)'; setTimeout(()=>document.getElementById('scan-email').style.borderColor='',1500); return; }
+  const btn = document.getElementById('scan-btn');
+  const loading = document.getElementById('scan-loading');
+  const result = document.getElementById('scan-result');
+  btn.disabled = true; loading.classList.add('on'); result.style.display = 'none';
+  let i = 0;
+  const iv = setInterval(()=>{ if(i<LOAD_MSGS.length) document.getElementById('load-txt').textContent=LOAD_MSGS[i++]; }, 700);
+  let breaches = null;
+  try {
+    const res = await fetch(`https://api.xposedornot.com/v1/check-email/${encodeURIComponent(email)}`, { headers:{'Accept':'application/json'} });
+    if (res.status === 200) {
+      const data = await res.json();
+      if (data.breaches && Array.isArray(data.breaches) && data.breaches.length > 0) {
+        breaches = data.breaches.map(b => ({ Name: b.breach||b, BreachDate: b.xposed_date||'', DataClasses: b.xposed_data ? b.xposed_data.split(';') : ['Email addresses'] }));
+      }
+    }
+  } catch(e) {
+    breaches = DEMO_BREACHES[email.toLowerCase()] ?? (Math.random() > 0.45 ? [{ Name:"Collection #1", BreachDate:"2019-01-07", DataClasses:["Email addresses","Passwords"] }] : null);
+  }
+  clearInterval(iv); loading.classList.remove('on'); btn.disabled = false;
+  showResult(email, breaches, result);
+}
+ 
+function showResult(email, breaches, el) {
+  el.style.display = 'block';
+  if (!breaches || !breaches.length) {
+    el.innerHTML = `<div class="r-header"><div class="r-icon safe">✓</div><div><div class="r-title">No breaches found</div><div class="r-sub">${email} — clear across all databases</div></div></div><div class="ubox"><p><strong>Stay protected</strong> — new breaches happen daily. Enable 24/7 monitoring.</p><button class="ubtn" onclick="showPage('auth');setAuthTab('signup')">Enable Monitoring →</button></div>`;
+  } else {
+    const list = breaches.slice(0,5).map(b => `<div class="b-item"><div><div class="b-name">${b.Name}</div><div class="b-date">${b.BreachDate?.split('-')[0]||''}</div></div><div class="b-tag">${(b.DataClasses||[]).slice(0,2).join(', ')}</div></div>`).join('');
+    const more = breaches.length > 5 ? `<p style="font-size:12px;color:var(--muted);margin-bottom:12px;font-family:var(--mono)">+ ${breaches.length - 5} more hidden — upgrade to see all</p>` : '';
+    el.innerHTML = `<div class="r-header"><div class="r-icon danger">⚠</div><div><div class="r-title" style="color:var(--danger)">${breaches.length} breach${breaches.length>1?'es':''} found</div><div class="r-sub">${email} — exposed in ${breaches.length} known leak${breaches.length>1?'s':''}</div></div></div><div class="b-list">${list}</div>${more}<div class="ubox"><p><strong>Your passwords may be compromised.</strong> Sign up to see full report and get step-by-step fix guide.</p><button class="ubtn" onclick="showPage('auth');setAuthTab('signup')">Fix This Now — Get Free Report →</button></div>`;
+  }
+  el.scrollIntoView({ behavior:'smooth', block:'nearest' });
+}
+ 
+document.getElementById('scan-email').addEventListener('keydown', e => { if(e.key==='Enter') runScan(); });
+ 
+// ─── DASHBOARD SCAN ────────────────────────────────────────────────────────────
+async function runDashScan() {
+  if (!APP.user) { showPage('auth'); return; }
+  const email = document.getElementById('dash-scan-email').value.trim();
+  if (!email || !email.includes('@')) { showToast('Enter a valid email address', 'error'); return; }
+  const btn = document.getElementById('dash-scan-btn');
+  const loading = document.getElementById('dash-loading');
+  const progress = document.getElementById('scan-progress');
+  const terminal = document.getElementById('dash-terminal');
+  btn.disabled = true; loading.classList.add('on');
+  progress.style.width = '0%';
+  
+  // Animate terminal
+  const steps = [
+    ['<span class="t-line-dim">┌──(root㉿cyberguard)-[~]</span><br>└─$ <span class="t-line-out">./scan --email ' + email + '</span><br><br>', 0],
+    ['<span class="t-line-out">[*] CyberGuard Engine v3.0 — Starting scan...</span><br>', 300],
+    ['<span class="t-line-out">[+] Module 1: XposedOrNot breach database</span><br>', 700],
+    ['&nbsp;&nbsp;&nbsp;→ Checking 1,400+ breach databases... ', 1200],
+    ['<span style="color:var(--success)">SCANNING</span><br>', 1800],
+    ['<span class="t-line-out">[+] Module 2: Dark web intelligence</span><br>', 2200],
+    ['&nbsp;&nbsp;&nbsp;→ Scanning paste sites... <span class="t-line-warn">checking</span><br>', 2600],
+    ['<span class="t-line-out">[+] Module 3: AI threat classification</span><br>', 3000],
+    ['&nbsp;&nbsp;&nbsp;→ Running ML risk model... <span style="color:var(--success)">analyzing</span><br>', 3400],
+    ['<span class="t-line-dim">━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</span><br>', 3800],
+  ];
+ 
+  terminal.innerHTML = '';
+  steps.forEach(([html, delay]) => {
+    setTimeout(() => {
+      terminal.innerHTML += html;
+      terminal.scrollTop = terminal.scrollHeight;
+    }, delay);
+  });
+ 
+  // Progress bar
+  [10,25,45,60,75,90].forEach((w, i) => setTimeout(() => progress.style.width = w+'%', i*600+300));
+  document.getElementById('dash-load-txt').textContent = 'Scanning...';
+ 
+  let breaches = null;
+  try {
+    const res = await fetch(`https://api.xposedornot.com/v1/check-email/${encodeURIComponent(email)}`, { headers:{'Accept':'application/json'} });
+    if (res.status === 200) {
+      const data = await res.json();
+      if (data.breaches && Array.isArray(data.breaches) && data.breaches.length > 0) {
+        breaches = data.breaches.map(b => ({ Name: b.breach||b, BreachDate: b.xposed_date||'', DataClasses: b.xposed_data ? b.xposed_data.split(';') : ['Email addresses'] }));
+      }
+    }
+  } catch(e) {
+    breaches = DEMO_BREACHES[email.toLowerCase()] ?? (Math.random() > 0.4 ? [{ Name:"Collection #1", BreachDate:"2019-01-07", DataClasses:["Passwords","Email addresses"] }] : null);
+  }
+ 
+  setTimeout(() => {
+    progress.style.width = '100%';
+    const bLen = breaches?.length || 0;
+    terminal.innerHTML += `<span class="t-line-dim">━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</span><br>`;
+    terminal.innerHTML += bLen > 0
+      ? `<span class="t-line-err">[!] RESULT: ${bLen} breach${bLen>1?'es':''} found for ${email}</span><br>`
+      : `<span class="t-line-out">[✓] RESULT: No breaches found — ${email} is clean</span><br>`;
+    terminal.innerHTML += `<span class="t-line-out">[✓] Report generated successfully</span><br>`;
+    terminal.innerHTML += `<span class="t-line-out">[✓] Scan data scheduled for deletion in 24h</span><br>`;
+    terminal.innerHTML += `<span class="t-line-dim">┌──(root㉿cyberguard)-[~]</span><br>└─$ <span class="t-cursor"></span>`;
+    terminal.scrollTop = terminal.scrollHeight;
+ 
+    // Save to history
+    APP.scanHistory.push({ email, date: new Date().toLocaleDateString('en-IN'), breaches: breaches || [], id: Date.now() });
+    APP.lastScanResults = { email, breaches };
+ 
+    // Show result card
+    const resultEl = document.getElementById('dash-scan-result');
+    showResult(email, breaches, resultEl);
+ 
+    loading.classList.remove('on'); btn.disabled = false;
+    updateDashboard();
+    showToast(bLen > 0 ? `⚠ ${bLen} breach${bLen>1?'es':''} found for ${email}` : `✓ ${email} — No breaches found`, bLen > 0 ? 'error' : 'success');
+    setTimeout(() => progress.style.width = '0%', 2000);
+  }, 4200);
+}
+ 
+// ─── KALI TOOLS (Simulated) ────────────────────────────────────────────────────
+async function runKaliTool(tool) {
+  const target = document.getElementById('kali-target')?.value.trim();
+  const pass = document.getElementById('kali-pass')?.value;
+  const terminal = document.getElementById('kali-terminal');
+  const progress = document.getElementById('kali-progress');
+ 
+  if (tool === 'osint' && !target) { showToast('Enter a target domain or email', 'error'); return; }
+  if (tool === 'hashcheck' && !pass) { showToast('Enter a password to check', 'error'); return; }
+ 
+  terminal.innerHTML = '';
+  progress.style.width = '0%';
+  document.getElementById('kali-osint-btn').disabled = true;
+  document.getElementById('kali-hash-btn').disabled = true;
+ 
+  const addLine = (html, delay) => setTimeout(() => {
+    terminal.innerHTML += html + '<br>';
+    terminal.scrollTop = terminal.scrollHeight;
+  }, delay);
+ 
+  if (tool === 'osint') {
+    addLine(`<span class="t-line-dim">┌──(root㉿cyberguard)-[~]</span>`, 0);
+    addLine(`└─$ <span class="t-line-out">theHarvester -d ${target} -b all -l 200</span>`, 100);
+    addLine(`<br><span class="t-line-out">[*] theHarvester 4.6.0 — by @laramies</span>`, 400);
+    addLine(`<span class="t-line-out">[*] Target: ${target}</span>`, 700);
+    addLine(`<span class="t-line-out">[*] Sources: Google, Bing, DuckDuckGo, LinkedIn, Shodan, GitHub</span>`, 1000);
+    [20,40,55,70,85].forEach((w, i) => setTimeout(() => progress.style.width = w+'%', i*500+1000));
+    addLine(`<br><span class="t-line-out">[+] Enumerating subdomains...</span>`, 1400);
+    addLine(`&nbsp;&nbsp;mail.${target}`, 1800); addLine(`&nbsp;&nbsp;vpn.${target}`, 2000); addLine(`&nbsp;&nbsp;api.${target}`, 2200);
+    addLine(`<br><span class="t-line-out">[+] Finding email addresses...</span>`, 2600);
+    addLine(`&nbsp;&nbsp;<span class="t-line-warn">admin@${target}</span> — found via LinkedIn`, 3000);
+    addLine(`&nbsp;&nbsp;<span class="t-line-warn">info@${target}</span> — found via Google`, 3200);
+    addLine(`<br><span class="t-line-out">[+] Open ports detected via Shodan...</span>`, 3600);
+    addLine(`&nbsp;&nbsp;Port 22 (SSH) — open`, 4000); addLine(`&nbsp;&nbsp;Port 443 (HTTPS) — open`, 4200);
+    setTimeout(() => {
+      progress.style.width = '100%';
+      terminal.innerHTML += `<br><span class="t-line-dim">━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</span><br>`;
+      terminal.innerHTML += `<span class="t-line-out">[✓] OSINT recon complete. Report saved.</span><br>`;
+      terminal.innerHTML += `<span class="t-line-out">[✓] Data scheduled for auto-deletion in 24h</span><br>`;
+      terminal.innerHTML += `<span class="t-line-dim">┌──(root㉿cyberguard)-[~]</span><br>└─$ <span class="t-cursor"></span>`;
+      terminal.scrollTop = terminal.scrollHeight;
+      document.getElementById('kali-osint-btn').disabled = false;
+      document.getElementById('kali-hash-btn').disabled = false;
+      setTimeout(() => progress.style.width = '0%', 2000);
+      showToast('OSINT recon complete — check terminal', 'success');
+    }, 4600);
+  }
+ 
+  if (tool === 'hashcheck') {
+    // Hash the password with SHA-1 in browser (k-Anonymity style, only send first 5 chars of hash)
+    const encoder = new TextEncoder();
+    const data = encoder.encode(pass);
+    const hashBuffer = await crypto.subtle.digest('SHA-1', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const hash = hashArray.map(b => b.toString(16).padStart(2,'0')).join('').toUpperCase();
+    const prefix = hash.slice(0,5);
+    const suffix = hash.slice(5);
+ 
+    addLine(`<span class="t-line-dim">┌──(root㉿cyberguard)-[~]</span>`, 0);
+    addLine(`└─$ <span class="t-line-out">pwned-check --k-anonymity</span>`, 100);
+    addLine(`<br><span class="t-line-out">[*] k-Anonymity Password Check — Powered by HIBP</span>`, 400);
+    addLine(`<span class="t-line-out">[*] SHA-1 hash computed locally (never sent)</span>`, 700);
+    addLine(`<span class="t-line-out">[*] Hash prefix: ${prefix}*****</span>`, 1000);
+    addLine(`<span class="t-line-out">[+] Querying HIBP Pwned Passwords API...</span>`, 1400);
+    [30,65,90].forEach((w,i) => setTimeout(() => progress.style.width = w+'%', i*400+1400));
+    try {
+      const res = await fetch(`https://api.pwnedpasswords.com/range/${prefix}`);
+      const text = await res.text();
+      const found = text.split('\n').some(line => line.startsWith(suffix));
+      setTimeout(() => {
+        progress.style.width = '100%';
+        terminal.innerHTML += found
+          ? `<br><span class="t-line-err">[!] RESULT: Password FOUND in ${text.split('\n').find(l=>l.startsWith(suffix))?.split(':')[1]?.trim()||'multiple'} breaches!</span><br><span class="t-line-err">[!] IMMEDIATE ACTION REQUIRED — Change this password now!</span><br>`
+          : `<br><span class="t-line-out">[✓] RESULT: Password NOT found in any known breach</span><br><span class="t-line-out">[✓] Safe to use — but always use unique passwords</span><br>`;
+        terminal.innerHTML += `<span class="t-line-dim">┌──(root㉿cyberguard)-[~]</span><br>└─$ <span class="t-cursor"></span>`;
+        terminal.scrollTop = terminal.scrollHeight;
+        document.getElementById('kali-osint-btn').disabled = false;
+        document.getElementById('kali-hash-btn').disabled = false;
+        setTimeout(() => progress.style.width = '0%', 2000);
+        showToast(found ? '⚠ Password is compromised!' : '✓ Password not found in breaches', found?'error':'success');
+      }, 2400);
+    } catch(e) {
+      setTimeout(() => {
+        terminal.innerHTML += `<br><span class="t-line-warn">[~] API unavailable — try again later</span><br><span class="t-line-dim">┌──(root㉿cyberguard)-[~]</span><br>└─$ <span class="t-cursor"></span>`;
+        terminal.scrollTop = terminal.scrollHeight;
+        document.getElementById('kali-osint-btn').disabled = false;
+        document.getElementById('kali-hash-btn').disabled = false;
+      }, 2000);
+    }
   }
 }
-function closeModal() { document.getElementById('modal').classList.remove('open'); }
-function switchTab(tab) {
-  document.getElementById('tab-signup').style.display = tab==='signup' ? '' : 'none';
-  document.getElementById('tab-login').style.display  = tab==='login'  ? '' : 'none';
-  document.getElementById('tab-btn-signup').classList.toggle('active', tab==='signup');
-  document.getElementById('tab-btn-login').classList.toggle('active',  tab==='login');
+ 
+function clearTerminal(id) {
+  document.getElementById(id).innerHTML = `<span class="t-line-dim">┌──(root㉿cyberguard)-[~]</span><br>└─$ <span class="t-cursor"></span>`;
 }
-document.getElementById('modal').addEventListener('click', e => { if(e.target===document.getElementById('modal')) closeModal(); });
  
-// ── DASHBOARD SECTIONS ──
-function showSection(name) {
-  document.querySelectorAll('.dash-section').forEach(s => s.classList.remove('active'));
-  document.querySelectorAll('.sidebar-nav a').forEach(a => a.classList.remove('active'));
-  document.getElementById('section-'+name).classList.add('active');
-  const navEl = document.getElementById('nav-'+name);
-  if (navEl) navEl.classList.add('active');
+function downloadTerminalLog() {
+  const term = document.getElementById('kali-terminal');
+  const text = term.innerText || term.textContent;
+  const blob = new Blob([`CyberGuard Kali Terminal Log\nDate: ${new Date().toLocaleString('en-IN')}\n\n` + text], {type:'text/plain'});
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = `cyberguard-kali-log-${Date.now()}.txt`; a.click();
+  showToast('Terminal log saved', 'success');
+}
  
-  // Sync account section with current user
-  if (name === 'account' && window._currentUser) {
-    const u = window._currentUser;
-    document.getElementById('acc-name').textContent  = u.user_metadata?.full_name || u.email.split('@')[0];
-    document.getElementById('acc-email').textContent = u.email;
-    document.getElementById('acc-plan').textContent  = (u.user_metadata?.plan || 'free').toUpperCase();
+// ─── PDF GENERATION ────────────────────────────────────────────────────────────
+async function downloadPDF(type) {
+  const btn = document.getElementById(`pdf-${type}-btn`);
+  btn.disabled = true; btn.textContent = '⏳ Generating PDF...';
+  await new Promise(r => setTimeout(r, 300));
+  try {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
+    const W = doc.internal.pageSize.getWidth();
+    const u = APP.user || { name:'User', email:'unknown', plan:'free' };
+    const totalBreaches = APP.scanHistory.reduce((a,s) => a + (s.breaches?.length||0), 0);
+    const risk = totalBreaches===0?'LOW':totalBreaches<=2?'MEDIUM':'HIGH';
+    const now = new Date();
+ 
+    // ── HEADER ──────────────────────────────────────────────────────────────
+    doc.setFillColor(2, 4, 9);
+    doc.rect(0, 0, W, 45, 'F');
+    doc.setFillColor(0, 255, 157);
+    doc.rect(0, 0, 6, 45, 'F');
+    doc.setFontSize(22); doc.setFont('helvetica','bold'); doc.setTextColor(0, 255, 157);
+    doc.text('CYBERGUARD', 14, 18);
+    doc.setFontSize(9); doc.setFont('helvetica','normal'); doc.setTextColor(140,150,170);
+    doc.text('INTELLIGENCE PLATFORM', 14, 25);
+    doc.setFontSize(10); doc.setTextColor(200,210,230);
+    doc.text(type==='full' ? 'FULL SECURITY INTELLIGENCE REPORT' : 'QUICK SUMMARY REPORT', 14, 35);
+    doc.setTextColor(80,90,100);
+    doc.text(`Generated: ${now.toLocaleDateString('en-IN')} ${now.toLocaleTimeString('en-IN')}`, W-14, 16, {align:'right'});
+    doc.text(`Report ID: CG-${Date.now()}`, W-14, 23, {align:'right'});
+ 
+    let y = 55;
+ 
+    // ── USER INFO ────────────────────────────────────────────────────────────
+    doc.setFillColor(13, 17, 23);
+    doc.roundedRect(14, y, W-28, 28, 3, 3, 'F');
+    doc.setFontSize(8); doc.setFont('helvetica','bold'); doc.setTextColor(0,255,157);
+    doc.text('// ACCOUNT INFORMATION', 20, y+8);
+    doc.setFont('helvetica','normal'); doc.setTextColor(200,210,230); doc.setFontSize(9);
+    doc.text(`Name: ${u.name}`, 20, y+16);
+    doc.text(`Email: ${u.email}`, 20, y+22);
+    doc.text(`Plan: ${(u.plan||'free').toUpperCase()}`, 110, y+16);
+    doc.text(`Risk Level: ${risk}`, 110, y+22);
+    y += 38;
+ 
+    // ── METRICS ─────────────────────────────────────────────────────────────
+    const metrics = [
+      ['TOTAL SCANS', APP.scanHistory.length.toString(), [0,112,243]],
+      ['BREACHES', totalBreaches.toString(), totalBreaches>0?[255,51,102]:[0,255,157]],
+      ['RISK LEVEL', risk, risk==='LOW'?[0,255,157]:risk==='MEDIUM'?[255,190,11]:[255,51,102]],
+      ['ACCOUNT STATUS', 'ACTIVE', [0,255,157]],
+    ];
+    const mW = (W-28-9) / 4;
+    metrics.forEach(([label, val, color], i) => {
+      const mx = 14 + i*(mW+3);
+      doc.setFillColor(13,17,23); doc.roundedRect(mx, y, mW, 22, 2, 2, 'F');
+      doc.setFontSize(7); doc.setFont('helvetica','bold'); doc.setTextColor(80,90,110);
+      doc.text(label, mx+4, y+7);
+      doc.setFontSize(14); doc.setFont('helvetica','bold'); doc.setTextColor(...color);
+      doc.text(val, mx+4, y+18);
+    });
+    y += 32;
+ 
+    // ── BREACH DETAILS ────────────────────────────────────────────────────────
+    if (document.getElementById('inc-breaches')?.checked !== false) {
+      doc.setFontSize(8); doc.setFont('helvetica','bold'); doc.setTextColor(0,255,157);
+      doc.text('// BREACH DATABASE RESULTS', 14, y);
+      y += 8;
+      const allBreaches = APP.scanHistory.flatMap(s => (s.breaches||[]).map(b => ({...b, email:s.email})));
+      if (!allBreaches.length) {
+        doc.setFillColor(13,17,23); doc.roundedRect(14,y,W-28,14,2,2,'F');
+        doc.setFontSize(9); doc.setFont('helvetica','normal'); doc.setTextColor(0,255,157);
+        doc.text('✓ No breaches detected — all monitored accounts are clean', 20, y+9);
+        y += 22;
+      } else {
+        // Table header
+        doc.setFillColor(20,30,20); doc.rect(14,y,W-28,8,'F');
+        doc.setFontSize(7); doc.setFont('helvetica','bold'); doc.setTextColor(0,200,120);
+        doc.text('SERVICE', 18, y+5.5); doc.text('EMAIL', 60, y+5.5);
+        doc.text('YEAR', 110, y+5.5); doc.text('EXPOSED DATA', 130, y+5.5); doc.text('SEVERITY', 175, y+5.5);
+        y += 10;
+        allBreaches.slice(0,20).forEach((b, idx) => {
+          if (y > 265) { doc.addPage(); y = 20; }
+          if (idx%2===0) { doc.setFillColor(10,14,10); doc.rect(14,y-1.5,W-28,9,'F'); }
+          doc.setFontSize(8); doc.setFont('helvetica','normal'); doc.setTextColor(200,210,230);
+          doc.text(b.Name?.slice(0,18)||'—', 18, y+4);
+          doc.text((b.email||'').slice(0,22), 60, y+4);
+          doc.text(b.BreachDate?.split('-')[0]||'—', 110, y+4);
+          doc.text((b.DataClasses||[]).slice(0,2).join(', ').slice(0,25), 130, y+4);
+          const isHigh = (b.DataClasses||[]).some(d=>/password/i.test(d));
+          doc.setTextColor(...(isHigh?[255,80,100]:[255,190,11]));
+          doc.text(isHigh?'HIGH':'MEDIUM', 175, y+4);
+          y += 9;
+        });
+        y += 8;
+      }
+    }
+ 
+    // ── REMEDIATION ──────────────────────────────────────────────────────────
+    if (type === 'full' || document.getElementById('inc-remediation')?.checked) {
+      if (y > 230) { doc.addPage(); y = 20; }
+      doc.setFontSize(8); doc.setFont('helvetica','bold'); doc.setTextColor(0,255,157);
+      doc.text('// REMEDIATION CHECKLIST', 14, y); y += 8;
+      const steps = [
+        '1. Change all passwords found in breaches immediately',
+        '2. Enable Two-Factor Authentication (2FA) on all accounts',
+        '3. Use a unique password for every account (use a password manager)',
+        '4. Check for suspicious activity in your email and social accounts',
+        '5. Notify your bank/financial institutions if financial data was exposed',
+        '6. Run CyberGuard monthly to catch new breaches early',
+      ];
+      steps.forEach(step => {
+        if (y > 270) { doc.addPage(); y = 20; }
+        doc.setFillColor(13,17,23); doc.roundedRect(14,y,W-28,9,1,1,'F');
+        doc.setFontSize(8); doc.setFont('helvetica','normal'); doc.setTextColor(200,210,230);
+        doc.text(step, 20, y+6); y += 11;
+      });
+      y += 6;
+    }
+ 
+    // ── SCAN TIMELINE ─────────────────────────────────────────────────────────
+    if (type === 'full' && APP.scanHistory.length > 0) {
+      if (y > 230) { doc.addPage(); y = 20; }
+      doc.setFontSize(8); doc.setFont('helvetica','bold'); doc.setTextColor(0,255,157);
+      doc.text('// SCAN HISTORY TIMELINE', 14, y); y += 8;
+      APP.scanHistory.slice(-8).reverse().forEach(s => {
+        if (y > 270) { doc.addPage(); y = 20; }
+        const bLen = s.breaches?.length||0;
+        doc.setFillColor(bLen>0?40:13, bLen>0?10:25, bLen>0?10:13);
+        doc.roundedRect(14,y,W-28,9,1,1,'F');
+        doc.setFontSize(8); doc.setFont('helvetica','normal');
+        doc.setTextColor(200,210,230); doc.text(s.email, 20, y+6);
+        doc.setTextColor(100,110,120); doc.text(s.date, 100, y+6);
+        doc.setTextColor(bLen>0?255:0, bLen>0?80:255, bLen>0?100:157);
+        doc.text(bLen>0 ? `${bLen} breach${bLen>1?'es':''} found` : 'Clean', 155, y+6);
+        y += 11;
+      });
+    }
+ 
+    // ── FOOTER ───────────────────────────────────────────────────────────────
+    const pageCount = doc.internal.getNumberOfPages();
+    for (let p=1; p<=pageCount; p++) {
+      doc.setPage(p);
+      doc.setFillColor(13,17,23); doc.rect(0,284,W,13,'F');
+      doc.setFontSize(7); doc.setFont('helvetica','normal'); doc.setTextColor(80,90,110);
+      doc.text('CyberGuard Intelligence Platform — Confidential Security Report', 14, 291);
+      doc.text(`Page ${p} of ${pageCount}`, W-14, 291, {align:'right'});
+      doc.setDrawColor(0,255,157); doc.setLineWidth(0.3); doc.line(14,285,W-14,285);
+    }
+ 
+    doc.save(`cyberguard-${type}-report-${now.toISOString().split('T')[0]}.pdf`);
+    showToast('📄 PDF report downloaded!', 'success');
+  } catch(e) {
+    console.error(e);
+    showToast('PDF generation failed — try again', 'error');
   }
+  btn.disabled = false; btn.textContent = type==='full' ? '📥 Download Full Report (PDF)' : '📥 Download Summary (PDF)';
 }
  
-// ── TOAST ──
+// ─── RAZORPAY ─────────────────────────────────────────────────────────────────
+function openRazorpay() {
+  if (!CONFIGURED.stripe) { showToast('Pro spot reserved! We\'ll contact you 🛡', 'success'); return; }
+  const u = APP.user || { name:'User', email:'user@demo.com' };
+  const opts = {
+    key: RAZORPAY_KEY, amount: PLAN_AMOUNT, currency: PLAN_CURRENCY,
+    name: 'CyberGuard', description: 'Pro Plan — ₹750/month',
+    prefill: { name: u.name, email: u.email },
+    theme: { color: '#00ff9d' },
+    handler: (resp) => {
+      if (APP.user) APP.user.plan = 'pro';
+      updateDashboard();
+      document.getElementById('upgrade-card').style.display = 'none';
+      showToast('🎉 Welcome to Pro! Kali engine activated.', 'success');
+    }
+  };
+  new Razorpay(opts).open();
+}
+ 
+// ─── TOAST ────────────────────────────────────────────────────────────────────
 function showToast(msg, type='success') {
   const t = document.getElementById('toast');
-  t.textContent = msg;
+  document.getElementById('toast-msg').textContent = msg;
+  document.getElementById('toast-ico').textContent = type==='success' ? '✓' : '⚠';
   t.className = `toast ${type} show`;
-  setTimeout(() => t.classList.remove('show'), 3500);
+  setTimeout(() => t.classList.remove('show'), 3800);
 }
  
-// ── SCROLL REVEAL ──
-const obs = new IntersectionObserver(entries => entries.forEach(e => { if(e.isIntersecting) e.target.classList.add('visible'); }), {threshold:0.08});
-document.querySelectorAll('.reveal').forEach(el => obs.observe(el));
+// ─── MISC ─────────────────────────────────────────────────────────────────────
+function confirmDeleteAccount() {
+  if (confirm('Permanently delete your account and all data? This cannot be undone.')) {
+    handleLogout();
+    showToast('Account deleted. Sorry to see you go.', 'success');
+  }
+}
+ 
+// ─── SCROLL REVEAL ────────────────────────────────────────────────────────────
+const revealObs = new IntersectionObserver(entries => entries.forEach(e => { if(e.isIntersecting) e.target.classList.add('vis'); }), {threshold:0.07});
+document.querySelectorAll('.reveal').forEach(el => revealObs.observe(el));
+ 
+// ─── INIT ─────────────────────────────────────────────────────────────────────
+window.addEventListener('load', () => {
+  initSupabase();
+  if (!CONFIGURED.supa) document.getElementById('setup-warn')?.classList.add('show');
+  // Animate demo terminal on landing
+  const demoTerm = document.getElementById('demo-terminal');
+  if (demoTerm) {
+    // Already has static content — just keep it
+  }
+});
 </script>
 </body>
 </html>

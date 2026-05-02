@@ -395,11 +395,53 @@ const RAZORPAY_KEY = 'rzp_test_Sf3riHcf1Nq2ZR';
 const PLAN_AMOUNT  = 75000;
 const PLAN_CURRENCY = 'INR';
  
+ 
 const CONFIGURED = {
   hibp: true,
   supa: SUPABASE_URL !== 'YOUR_SUPABASE_URL',
   stripe: RAZORPAY_KEY !== 'YOUR_RAZORPAY_KEY_ID',
 };
+ 
+/*
+ ===================================================================
+  SUPABASE SETUP: Run this SQL in Supabase -> SQL Editor -> New Query
+ ===================================================================
+ 
+  create table if not exists public.users (
+    id uuid references auth.users(id) on delete cascade primary key,
+    email text unique not null,
+    full_name text,
+    plan text default 'free',
+    razorpay_payment_id text,
+    created_at timestamptz default now()
+  );
+  alter table public.users enable row level security;
+  create policy "Users can read own row" on public.users for select using (auth.uid() = id);
+  create policy "Users can update own row" on public.users for update using (auth.uid() = id);
+  create policy "Users can insert own row" on public.users for insert with check (auth.uid() = id);
+ 
+  create table if not exists public.scans (
+    id uuid default gen_random_uuid() primary key,
+    user_id uuid references auth.users(id) on delete cascade,
+    scanned_email text not null,
+    breach_data text default '[]',
+    breach_count int default 0,
+    created_at timestamptz default now()
+  );
+  alter table public.scans enable row level security;
+  create policy "Users can read own scans" on public.scans for select using (auth.uid() = user_id);
+  create policy "Users can insert own scans" on public.scans for insert with check (auth.uid() = user_id);
+  create policy "Users can delete own scans" on public.scans for delete using (auth.uid() = user_id);
+ 
+ ===================================================================
+  EMAIL REDIRECT FIX (fixes wrong website redirect issue):
+  Go to: Supabase Dashboard -> Authentication -> URL Configuration
+  Set "Site URL" to YOUR domain: https://yourdomain.vercel.app
+  Add "Redirect URLs": https://yourdomain.vercel.app/**
+  This is why your email was redirecting to someone else's site!
+ ===================================================================
+*/
+ 
  
 // ─── APP STATE ─────────────────────────────────────────────
 let APP = {
@@ -826,7 +868,7 @@ let APP = {
         <button class="sidebar-item" id="nav-settings" onclick="switchDashPanel('settings')">
           <span class="s-ico">⚙️</span><span>Settings</span>
         </button>
-        <button class="sidebar-item" onclick="handleLogout()">
+        <button class="sidebar-item" onclick="handleLogout();return false">
           <span class="s-ico">🚪</span><span>Sign Out</span>
         </button>
       </div>
@@ -909,7 +951,9 @@ let APP = {
       <div class="dash-panel" id="panel-scan">
         <div class="dash-header">
           <div class="dash-title">NEW SCAN</div>
-          <div class="dash-sub">Run a breach intelligence scan. All data is auto-deleted after 24 hours.</div>
+          <div class="dash-sub">Run a breach intelligence scan. All data is auto-deleted after 24 hours.
+            <span id="scan-quota-label" style="margin-left:12px;font-family:var(--mono);font-size:12px;background:rgba(0,255,157,0.08);border:1px solid rgba(0,255,157,0.15);padding:3px 10px;border-radius:5px;color:var(--accent)"></span>
+          </div>
         </div>
  
         <div class="scan-new-wrap">
@@ -1156,14 +1200,106 @@ let APP = {
      JAVASCRIPT CORE
 ═══════════════════════════════════════════════════════════ -->
 <script>
-// ─── SUPABASE ─────────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════
+//  FIX 1 — SUPABASE: proper init + DB writes + auth listener
+// ═══════════════════════════════════════════════════════════
 let supabase = null;
 async function initSupabase() {
-  if (!CONFIGURED.supa || supabase) return;
+  if (supabase) return supabase;
+  if (!CONFIGURED.supa) return null;
   try {
     const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm');
-    supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
-  } catch(e) { console.warn('Supabase not available'); }
+    // FIX: redirectTo must point to YOUR deployed URL, not someone else's
+    supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
+      auth: {
+        // Change this to your actual deployed domain when you deploy:
+        // e.g. 'https://yourdomain.com' or 'http://localhost:3000'
+        // This MUST match the "Site URL" in Supabase → Authentication → URL Configuration
+        redirectTo: window.location.origin + window.location.pathname
+      }
+    });
+    // Listen for auth state changes (e.g. email confirmation redirects back)
+    supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_IN' && session?.user && !APP.user) {
+        await loadUserFromSession(session.user);
+      }
+      if (event === 'SIGNED_OUT') {
+        APP.user = null; APP.scanHistory = []; APP.lastScanResults = null;
+      }
+    });
+  } catch(e) { console.warn('Supabase init failed:', e); }
+  return supabase;
+}
+ 
+// ═══════════════════════════════════════════════════════════
+//  FIX 2 — PERSISTENT DATA: load from Supabase on login
+// ═══════════════════════════════════════════════════════════
+async function loadUserFromSession(authUser) {
+  const sb = await initSupabase();
+  const name = authUser.user_metadata?.full_name || authUser.email.split('@')[0];
+  let plan = 'free';
+  let scans = [];
+  if (sb) {
+    // Load user profile from users table
+    const { data: profile } = await sb.from('users').select('*').eq('id', authUser.id).single();
+    if (profile) plan = profile.plan || 'free';
+    // Load scan history from scans table
+    const { data: scanRows } = await sb.from('scans').select('*').eq('user_id', authUser.id).order('created_at', { ascending: false }).limit(50);
+    if (scanRows) {
+      scans = scanRows.map(row => ({
+        id: row.id,
+        email: row.scanned_email,
+        date: new Date(row.created_at).toLocaleDateString('en-IN'),
+        breaches: row.breach_data ? JSON.parse(row.breach_data) : [],
+      }));
+    }
+  }
+  APP.user = { id: authUser.id, name, email: authUser.email, plan };
+  APP.scanHistory = scans;
+}
+ 
+// Save a scan to Supabase
+async function saveScanToSupabase(email, breaches) {
+  const sb = await initSupabase();
+  if (!sb || !APP.user?.id) return;
+  try {
+    const { data, error } = await sb.from('scans').insert({
+      user_id: APP.user.id,
+      scanned_email: email,
+      breach_data: JSON.stringify(breaches || []),
+      breach_count: (breaches||[]).length,
+      created_at: new Date().toISOString()
+    }).select().single();
+    if (error) console.warn('Scan save error:', error.message);
+    return data;
+  } catch(e) { console.warn('Scan save failed:', e); }
+}
+ 
+// ═══════════════════════════════════════════════════════════
+//  FIX 3 — SCAN LIMITS: Free = 1 scan, Pro = unlimited
+// ═══════════════════════════════════════════════════════════
+const SCAN_LIMITS = { free: 1, pro: Infinity };
+function canScan() {
+  const limit = SCAN_LIMITS[APP.user?.plan || 'free'];
+  return APP.scanHistory.length < limit;
+}
+function scansRemaining() {
+  const limit = SCAN_LIMITS[APP.user?.plan || 'free'];
+  if (limit === Infinity) return '∞';
+  return Math.max(0, limit - APP.scanHistory.length);
+}
+ 
+// ═══════════════════════════════════════════════════════════
+//  FIX 4 — PRO GATE: block pro features for free users
+// ═══════════════════════════════════════════════════════════
+function requirePro(featureName) {
+  if (APP.user?.plan === 'pro') return true;
+  showProGate(featureName);
+  return false;
+}
+function showProGate(feature) {
+  const msg = `🔒 ${feature} is a Pro feature.\n\nUpgrade to Pro for ₹750/month to unlock:\n• Unlimited scans\n• Dark web monitoring\n• Kali terminal access\n• Full PDF reports\n\nClick OK to upgrade now.`;
+  if (confirm(msg)) openRazorpay();
 }
  
 // ─── PAGE ROUTING ──────────────────────────────────────────────────────────────
@@ -1171,20 +1307,19 @@ function showPage(p) {
   document.querySelectorAll('.page').forEach(el => el.classList.remove('active'));
   document.getElementById('page-' + p).classList.add('active');
   APP.currentPage = p;
-  // nav center hide on auth/dash
   const navCenter = document.getElementById('nav-center');
   const navRight = document.getElementById('nav-right');
   if (p === 'dashboard') {
     navCenter.style.display = 'none';
-    navRight.innerHTML = `<div class="user-avatar" id="nav-avatar">${(APP.user?.name||'U')[0].toUpperCase()}</div>`;
+    navRight.innerHTML = `<div class="user-avatar" id="nav-avatar" title="${APP.user?.email||''}">${(APP.user?.name||'U')[0].toUpperCase()}</div>`;
     updateDashboard();
   } else if (p === 'auth') {
     navCenter.style.display = 'none';
-    if(!APP.user) navRight.innerHTML = `<button class="nav-btn outline" onclick="showPage('landing')">← Back</button>`;
+    navRight.innerHTML = `<button class="nav-btn outline" onclick="showPage('landing')">← Back</button>`;
   } else {
     navCenter.style.display = 'flex';
     navRight.innerHTML = APP.user
-      ? `<div class="user-avatar" onclick="showPage('dashboard')">${(APP.user.name||'U')[0].toUpperCase()}</div>`
+      ? `<div class="user-avatar" onclick="showPage('dashboard')" title="Dashboard">${(APP.user.name||'U')[0].toUpperCase()}</div>`
       : `<button class="nav-btn outline" onclick="showPage('auth');setAuthTab('login')">Sign in</button><button class="nav-btn solid" onclick="showPage('auth');setAuthTab('signup')">Get Protected</button>`;
   }
   window.scrollTo(0,0);
@@ -1216,17 +1351,45 @@ async function handleSignup() {
   if (!email || !email.includes('@')) { showAuthErr(err, '⚠ Enter a valid email.'); return; }
   if (pass.length < 8) { showAuthErr(err, '⚠ Password must be at least 8 characters.'); return; }
   btn.disabled = true; btn.textContent = 'Creating account...';
-  await initSupabase();
+  const sb = await initSupabase();
   try {
-    if (CONFIGURED.supa && supabase) {
-      const { error } = await supabase.auth.signUp({ email, password: pass, options: { data: { full_name: name } } });
+    if (sb) {
+      // FIX: Pass redirectTo so email confirmation links back to YOUR site
+      const { data, error } = await sb.auth.signUp({
+        email, password: pass,
+        options: {
+          data: { full_name: name },
+          emailRedirectTo: window.location.origin + window.location.pathname
+        }
+      });
       if (error) { showAuthErr(err, error.message); btn.disabled=false; btn.textContent='Create free account →'; return; }
+      // FIX: Write user row to public.users table for persistence
+      if (data?.user) {
+        await sb.from('users').upsert({
+          id: data.user.id,
+          email,
+          full_name: name,
+          plan: APP.currentPlan === 'pro' ? 'pro' : 'free',
+          created_at: new Date().toISOString()
+        }, { onConflict: 'id' });
+        APP.user = { id: data.user.id, name, email, plan: APP.currentPlan === 'pro' ? 'pro' : 'free' };
+      }
+      // If email confirmation is required
+      if (!data?.session) {
+        ok.style.display = 'block';
+        ok.textContent = '✓ Check your email — click the confirmation link to activate your account.';
+        btn.disabled = false; btn.textContent = 'Create free account →';
+        return;
+      }
+    } else {
+      // Demo mode fallback
+      APP.user = { id: 'demo-' + Date.now(), name, email, plan: 'free' };
     }
-    APP.user = { name, email, plan: APP.currentPlan || 'free' };
+    APP.scanHistory = [];
     ok.style.display = 'block'; ok.textContent = '✓ Account created! Entering dashboard...';
     showToast('Welcome to CyberGuard! 🛡', 'success');
     setTimeout(() => showPage('dashboard'), 1200);
-  } catch(e) { showAuthErr(err, 'Something went wrong. Try again.'); }
+  } catch(e) { showAuthErr(err, 'Something went wrong. Try again.'); console.error(e); }
   btn.disabled = false; btn.textContent = 'Create free account →';
 }
  
@@ -1241,24 +1404,39 @@ async function handleLogin() {
   if (!email || !email.includes('@')) { showAuthErr(err, '⚠ Enter a valid email.'); return; }
   if (!pass) { showAuthErr(err, '⚠ Enter your password.'); return; }
   btn.disabled = true; btn.textContent = 'Signing in...';
-  await initSupabase();
+  const sb = await initSupabase();
   try {
-    if (CONFIGURED.supa && supabase) {
-      const { error, data } = await supabase.auth.signInWithPassword({ email, password: pass });
+    if (sb) {
+      const { error, data } = await sb.auth.signInWithPassword({ email, password: pass });
       if (error) { showAuthErr(err, error.message); btn.disabled=false; btn.textContent='Sign in →'; return; }
-      APP.user = { name: data.user?.user_metadata?.full_name || email.split('@')[0], email, plan: 'free' };
+      // FIX: Load all persistent data from Supabase
+      await loadUserFromSession(data.user);
     } else {
-      // Demo login
-      APP.user = { name: email.split('@')[0], email, plan: 'free' };
+      // Demo mode: restore from localStorage as fallback
+      const saved = localStorage.getItem('cg_demo_' + email);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        APP.user = parsed.user;
+        APP.scanHistory = parsed.scans || [];
+      } else {
+        APP.user = { id: 'demo-' + Date.now(), name: email.split('@')[0], email, plan: 'free' };
+        APP.scanHistory = [];
+      }
     }
-    ok.style.display = 'block'; ok.textContent = '✓ Signed in! Loading dashboard...';
-    showToast('Welcome back! 👋', 'success');
+    ok.style.display = 'block'; ok.textContent = '✓ Signed in! Loading your data...';
+    showToast(`Welcome back, ${APP.user.name}! 👋`, 'success');
     setTimeout(() => showPage('dashboard'), 1000);
-  } catch(e) { showAuthErr(err, 'Sign in failed. Try again.'); }
+  } catch(e) { showAuthErr(err, 'Sign in failed. Try again.'); console.error(e); }
   btn.disabled = false; btn.textContent = 'Sign in →';
 }
  
-function handleLogout() {
+async function handleLogout() {
+  // FIX: demo mode — save to localStorage before logout
+  if (!CONFIGURED.supa && APP.user) {
+    localStorage.setItem('cg_demo_' + APP.user.email, JSON.stringify({ user: APP.user, scans: APP.scanHistory }));
+  }
+  const sb = await initSupabase();
+  if (sb) await sb.auth.signOut();
   APP.user = null; APP.scanHistory = []; APP.lastScanResults = null;
   showPage('landing');
   showToast('Signed out successfully', 'success');
@@ -1302,6 +1480,7 @@ function updateDashboard() {
   updateActivityFeed();
   updateBreachTable();
   updateHistoryList();
+  updateScanQuota();
 }
  
 function switchDashPanel(panel) {
@@ -1423,85 +1602,108 @@ function showResult(email, breaches, el) {
 document.getElementById('scan-email').addEventListener('keydown', e => { if(e.key==='Enter') runScan(); });
  
 // ─── DASHBOARD SCAN ────────────────────────────────────────────────────────────
+// ─── DASHBOARD SCAN ────────────────────────────────────────────────────────────
 async function runDashScan() {
   if (!APP.user) { showPage('auth'); return; }
   const email = document.getElementById('dash-scan-email').value.trim();
   if (!email || !email.includes('@')) { showToast('Enter a valid email address', 'error'); return; }
+ 
+  // FIX: Enforce scan limits
+  if (!canScan()) {
+    showProGate('Unlimited Scans (Free plan limit of ' + SCAN_LIMITS.free + ' scan already used)');
+    return;
+  }
+ 
+  // FIX: Gate deep/domain scan behind Pro
+  const scanType = document.getElementById('dash-scan-type').value;
+  if ((scanType === 'deep' || scanType === 'domain') && APP.user.plan !== 'pro') {
+    showProGate(scanType === 'deep' ? 'Deep Scan' : 'Domain Scan');
+    return;
+  }
+ 
   const btn = document.getElementById('dash-scan-btn');
   const loading = document.getElementById('dash-loading');
   const progress = document.getElementById('scan-progress');
   const terminal = document.getElementById('dash-terminal');
   btn.disabled = true; loading.classList.add('on');
   progress.style.width = '0%';
-  
+ 
   // Animate terminal
+  terminal.innerHTML = '';
   const steps = [
-    ['<span class="t-line-dim">┌──(root㉿cyberguard)-[~]</span><br>└─$ <span class="t-line-out">./scan --email ' + email + '</span><br><br>', 0],
-    ['<span class="t-line-out">[*] CyberGuard Engine v3.0 — Starting scan...</span><br>', 300],
+    ['<span class="t-line-dim">\\u250c\\u2500\\u2500(root\\u2553cyberguard)-[~]</span><br>\\u2514\\u2500$ <span class="t-line-out">./scan --email ' + email + ' --type ' + scanType + '</span><br><br>', 0],
+    ['<span class="t-line-out">[*] CyberGuard Engine v3.0 Starting...</span><br>', 300],
     ['<span class="t-line-out">[+] Module 1: XposedOrNot breach database</span><br>', 700],
-    ['&nbsp;&nbsp;&nbsp;→ Checking 1,400+ breach databases... ', 1200],
+    ['&nbsp;&nbsp;&nbsp;\\u2192 Checking 1,400+ breach databases... ', 1200],
     ['<span style="color:var(--success)">SCANNING</span><br>', 1800],
     ['<span class="t-line-out">[+] Module 2: Dark web intelligence</span><br>', 2200],
-    ['&nbsp;&nbsp;&nbsp;→ Scanning paste sites... <span class="t-line-warn">checking</span><br>', 2600],
+    ['&nbsp;&nbsp;&nbsp;\\u2192 Scanning paste sites... <span class="t-line-warn">checking</span><br>', 2600],
     ['<span class="t-line-out">[+] Module 3: AI threat classification</span><br>', 3000],
-    ['&nbsp;&nbsp;&nbsp;→ Running ML risk model... <span style="color:var(--success)">analyzing</span><br>', 3400],
-    ['<span class="t-line-dim">━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</span><br>', 3800],
+    ['&nbsp;&nbsp;&nbsp;\\u2192 Running ML risk model... <span style="color:var(--success)">analyzing</span><br>', 3400],
   ];
- 
-  terminal.innerHTML = '';
-  steps.forEach(([html, delay]) => {
-    setTimeout(() => {
-      terminal.innerHTML += html;
-      terminal.scrollTop = terminal.scrollHeight;
-    }, delay);
-  });
- 
-  // Progress bar
-  [10,25,45,60,75,90].forEach((w, i) => setTimeout(() => progress.style.width = w+'%', i*600+300));
+  steps.forEach(function(s) { setTimeout(function(){ terminal.innerHTML += s[0]; terminal.scrollTop = terminal.scrollHeight; }, s[1]); });
+  [10,25,45,60,75,90].forEach(function(w, i) { setTimeout(function(){ progress.style.width = w+'%'; }, i*600+300); });
   document.getElementById('dash-load-txt').textContent = 'Scanning...';
  
-  let breaches = null;
+  var breaches = null;
   try {
-    const res = await fetch(`https://api.xposedornot.com/v1/check-email/${encodeURIComponent(email)}`, { headers:{'Accept':'application/json'} });
+    const res = await fetch('https://api.xposedornot.com/v1/check-email/' + encodeURIComponent(email), { headers:{'Accept':'application/json'} });
     if (res.status === 200) {
       const data = await res.json();
       if (data.breaches && Array.isArray(data.breaches) && data.breaches.length > 0) {
-        breaches = data.breaches.map(b => ({ Name: b.breach||b, BreachDate: b.xposed_date||'', DataClasses: b.xposed_data ? b.xposed_data.split(';') : ['Email addresses'] }));
+        breaches = data.breaches.map(function(b){ return { Name: b.breach||b, BreachDate: b.xposed_date||'', DataClasses: b.xposed_data ? b.xposed_data.split(';') : ['Email addresses'] }; });
       }
     }
   } catch(e) {
-    breaches = DEMO_BREACHES[email.toLowerCase()] ?? (Math.random() > 0.4 ? [{ Name:"Collection #1", BreachDate:"2019-01-07", DataClasses:["Passwords","Email addresses"] }] : null);
+    breaches = DEMO_BREACHES[email.toLowerCase()] || (Math.random() > 0.4 ? [{ Name:'Collection #1', BreachDate:'2019-01-07', DataClasses:['Passwords','Email addresses'] }] : null);
   }
  
-  setTimeout(() => {
+  setTimeout(async function() {
     progress.style.width = '100%';
-    const bLen = breaches?.length || 0;
-    terminal.innerHTML += `<span class="t-line-dim">━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</span><br>`;
+    const bLen = breaches ? breaches.length : 0;
+    terminal.innerHTML += '<span class="t-line-dim">\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500</span><br>';
     terminal.innerHTML += bLen > 0
-      ? `<span class="t-line-err">[!] RESULT: ${bLen} breach${bLen>1?'es':''} found for ${email}</span><br>`
-      : `<span class="t-line-out">[✓] RESULT: No breaches found — ${email} is clean</span><br>`;
-    terminal.innerHTML += `<span class="t-line-out">[✓] Report generated successfully</span><br>`;
-    terminal.innerHTML += `<span class="t-line-out">[✓] Scan data scheduled for deletion in 24h</span><br>`;
-    terminal.innerHTML += `<span class="t-line-dim">┌──(root㉿cyberguard)-[~]</span><br>└─$ <span class="t-cursor"></span>`;
+      ? '<span class="t-line-err">[!] RESULT: ' + bLen + ' breach' + (bLen>1?'es':'') + ' found for ' + email + '</span><br>'
+      : '<span class="t-line-out">[\\u2713] RESULT: No breaches found \\u2014 ' + email + ' is clean</span><br>';
+    terminal.innerHTML += '<span class="t-line-out">[\\u2713] Report generated successfully</span><br>';
+    terminal.innerHTML += '<span class="t-line-out">[\\u2713] Scan data scheduled for deletion in 24h</span><br>';
+    terminal.innerHTML += '<span class="t-line-dim">\\u250c\\u2500\\u2500(root\\u2553cyberguard)-[~]</span><br>\\u2514\\u2500$ <span class="t-cursor"></span>';
     terminal.scrollTop = terminal.scrollHeight;
  
-    // Save to history
-    APP.scanHistory.push({ email, date: new Date().toLocaleDateString('en-IN'), breaches: breaches || [], id: Date.now() });
-    APP.lastScanResults = { email, breaches };
+    // FIX: Save to Supabase + local state
+    const scanEntry = { email: email, date: new Date().toLocaleDateString('en-IN'), breaches: breaches || [], id: Date.now() };
+    APP.scanHistory.push(scanEntry);
+    APP.lastScanResults = { email: email, breaches: breaches };
+    await saveScanToSupabase(email, breaches || []);
  
-    // Show result card
+    // FIX: Demo mode — persist to localStorage so data survives logout
+    if (!CONFIGURED.supa && APP.user) {
+      try { localStorage.setItem('cg_demo_' + APP.user.email, JSON.stringify({ user: APP.user, scans: APP.scanHistory })); } catch(e){}
+    }
+ 
     const resultEl = document.getElementById('dash-scan-result');
     showResult(email, breaches, resultEl);
- 
     loading.classList.remove('on'); btn.disabled = false;
     updateDashboard();
-    showToast(bLen > 0 ? `⚠ ${bLen} breach${bLen>1?'es':''} found for ${email}` : `✓ ${email} — No breaches found`, bLen > 0 ? 'error' : 'success');
-    setTimeout(() => progress.style.width = '0%', 2000);
+ 
+    // FIX: Show remaining scan count in toast
+    const rem = scansRemaining();
+    const limitTxt = rem === '\u221e' ? '' : ' \u00b7 ' + rem + ' scan' + (rem !== 1 ? 's' : '') + ' remaining';
+    showToast((bLen > 0 ? '\u26a0 ' + bLen + ' breach' + (bLen>1?'es':'') + ' found' : '\u2713 ' + email + ' \u2014 No breaches found') + limitTxt, bLen > 0 ? 'error' : 'success');
+ 
+    // Nudge free user after their last scan
+    if (!canScan() && APP.user.plan !== 'pro') {
+      setTimeout(function(){ showToast('\ud83d\udd12 Scan limit reached \u2014 upgrade to Pro for unlimited scans', 'error'); }, 4000);
+    }
+    setTimeout(function(){ progress.style.width = '0%'; }, 2000);
   }, 4200);
 }
  
 // ─── KALI TOOLS (Simulated) ────────────────────────────────────────────────────
 async function runKaliTool(tool) {
+  // FIX: Gate ALL Kali tools behind Pro plan
+  if (!requirePro('Kali Linux Terminal')) return;
+ 
   const target = document.getElementById('kali-target')?.value.trim();
   const pass = document.getElementById('kali-pass')?.value;
   const terminal = document.getElementById('kali-terminal');
@@ -1803,15 +2005,37 @@ const revealObs = new IntersectionObserver(entries => entries.forEach(e => { if(
 document.querySelectorAll('.reveal').forEach(el => revealObs.observe(el));
  
 // ─── INIT ─────────────────────────────────────────────────────────────────────
-window.addEventListener('load', () => {
-  initSupabase();
-  if (!CONFIGURED.supa) document.getElementById('setup-warn')?.classList.add('show');
-  // Animate demo terminal on landing
-  const demoTerm = document.getElementById('demo-terminal');
-  if (demoTerm) {
-    // Already has static content — just keep it
+window.addEventListener('load', async () => {
+  const sb = await initSupabase();
+ 
+  // FIX: Check if already logged in (e.g. returning from email confirmation link)
+  if (sb) {
+    const { data: { session } } = await sb.auth.getSession();
+    if (session?.user) {
+      await loadUserFromSession(session.user);
+      showPage('dashboard');
+      return;
+    }
   }
+ 
+  if (!CONFIGURED.supa) document.getElementById('setup-warn')?.classList.add('show');
 });
+ 
+// Update scan quota label whenever dashboard updates
+function updateScanQuota() {
+  const el = document.getElementById('scan-quota-label');
+  if (!el) return;
+  const plan = APP.user?.plan || 'free';
+  const rem = scansRemaining();
+  if (plan === 'pro') {
+    el.textContent = '// PRO: unlimited scans';
+    el.style.color = 'var(--accent)';
+  } else {
+    el.textContent = '// FREE: ' + rem + ' scan' + (rem!=='1'?'s':'') + ' remaining';
+    el.style.color = rem === '0' ? 'var(--danger)' : 'var(--warning)';
+  }
+}
 </script>
 </body>
 </html>
+ 
